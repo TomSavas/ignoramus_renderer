@@ -2,14 +2,13 @@
 
 #include "texture_pool.h"
 
-//tmp 
-#include "imgui.h"
-
 glm::fvec3 ToVec3(objl::Vector3 vec)
 {
     return glm::fvec3(vec.X, vec.Y, vec.Z);
 }
-glm::fvec2 ToVec2(objl::Vector2 vec) {
+
+glm::fvec2 ToVec2(objl::Vector2 vec) 
+{
     return glm::fvec2(vec.X, vec.Y);
 }
 
@@ -39,8 +38,8 @@ Mesh::Mesh(objl::Mesh &mesh, std::vector<std::pair<std::string, std::string>> ov
             float f = 1.f / (deltaUV0.x * deltaUV1.y - deltaUV1.x * deltaUV0.y);
             glm::vec3 tangent;
             tangent.x = f * (deltaUV1.y * edge0.x - deltaUV0.y * edge1.x);
-            tangent.x = f * (deltaUV1.y * edge0.y - deltaUV0.y * edge1.y);
-            tangent.x = f * (deltaUV1.y * edge0.z - deltaUV0.y * edge1.z);
+            tangent.y = f * (deltaUV1.y * edge0.y - deltaUV0.y * edge1.y);
+            tangent.z = f * (deltaUV1.y * edge0.z - deltaUV0.y * edge1.z);
 
             tangents[mesh.Indices[i + ((j+0) % 3)]] += tangent;
             tangents[mesh.Indices[i + ((j+1) % 3)]] += tangent;
