@@ -31,6 +31,8 @@ struct DeferredTest
     float pointBias;
     float pointAngleBias;
 
+    float gamma = 2.2;
+
     unsigned int depthStencil;
     Shader pointShadowPass;
     Shader directionalShadowPass;

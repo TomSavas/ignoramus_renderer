@@ -94,6 +94,10 @@ void ShowSettings(DeferredTest &a)
         ImGui::Spacing();
         ImGui::SliderFloat("Point bias", &a.pointBias, 0.f, 0.0001f, "%.9f");
         ImGui::SliderFloat("Point angle bias", &a.pointAngleBias, 0.f, 0.0001f, "%.9f");
+
+        ImGui::Separator();
+
+        ImGui::SliderFloat("Gamma", &a.gamma, 0.f, 10.f);
     }
     ImGui::End();
 }

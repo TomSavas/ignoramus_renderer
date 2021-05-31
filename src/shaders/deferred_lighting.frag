@@ -28,6 +28,8 @@ uniform float directionalAngleBias;
 uniform float pointBias;
 uniform float pointAngleBias;
 
+uniform float gamma;
+
 float shadowIntensity(vec4 fragPos, vec3 normal)
 {
     if (!using_shadow_cubemap && !using_shadow_map)
@@ -107,7 +109,7 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
         shadow += pcfShadow / 9.f;
     }
 
-    return shadow * 0.4;
+    return shadow / ((using_shadow_map && using_shadow_cubemap) ? 2.f : 1.f);
 }
 
 float lightAttenuation(vec3 fragPos)
@@ -138,7 +140,8 @@ void main()
     vec4 specularIntensityColor = diffuse * vec4(specularIntensity);
 
     // TODO: fix shadow/light interactions
-    fragColor = ambientIntensityColor + (1.f - shadowIntensity(pos, normal.xyz)) * (diffuseIntensityColor + specularIntensityColor);
+    vec4 color = ambientIntensityColor + (1.f - shadowIntensity(pos, normal.xyz)) * (diffuseIntensityColor + specularIntensityColor);
 
-    // TODO: add gamma correction
+    // Gamma correction
+    fragColor = pow(color, vec4(vec3(1.f / gamma), 1.f));
 }

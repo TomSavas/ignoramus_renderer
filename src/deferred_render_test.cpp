@@ -386,6 +386,8 @@ void DeferredTest::Render()
 
     lightingPass.SetUniform("pointBias", pointBias);
     lightingPass.SetUniform("pointAngleBias", pointAngleBias);
+    
+    lightingPass.SetUniform("gamma", gamma);
 
     lightingPass.SetUniform("directionalLightPos", directionalLightTransform.pos);
     glm::mat4 proj = camera.projection * glm::lookAt(directionalLightTransform.pos, directionalLightTransform.pos + directionalLightTransform.Forward(), directionalLightTransform.Up());
