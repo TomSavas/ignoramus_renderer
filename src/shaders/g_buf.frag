@@ -4,7 +4,8 @@ layout (location = 1) out vec3 gNormal;
 layout (location = 2) out vec4 gAlbedo;
 layout (location = 3) out vec3 gSpec;
 
-in vec3 FragPos;
+in vec3 WorldFragPos;
+in vec4 FragPos;
 in vec2 TexCoords;
 in vec3 Normal;
 in mat3 Tbn;
@@ -21,7 +22,7 @@ uniform sampler2D tex_normal;
 
 void main()
 {    
-    gPosition = FragPos;
+    gPosition = WorldFragPos.xyz;
 
     vec3 normal;
     if (usingNormalMap && !showModelNormals)
@@ -35,18 +36,19 @@ void main()
     }
     else
     {
+        //normal = Tangent;
         normal = Normal;
     }
     gNormal = normalize(normal);
 
     gAlbedo.rgb = texture(tex_diffuse, TexCoords).rgb;
 
+    gSpec.rgb = FragPos.zzz / 10000;
     /*
     if (usingSpecularMap)
     {
         gSpec.rgb = texture(tex_specular, TexCoords).rrr;
     }
     */
-    gSpec.rgb = vec3(0.f);
 }
 

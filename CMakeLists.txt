@@ -5,8 +5,8 @@ project(${PROJECT})
 set(EXEC ${PROJECT})
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "-ggdb")
-#set(CMAKE_CXX_FLAGS "-O2")
+#set(CMAKE_CXX_FLAGS "-ggdb")
+set(CMAKE_CXX_FLAGS "-ggdb -O2")
 
 file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp")
 #file(GLOB SOURCES "lib/imgui/*.cpp")

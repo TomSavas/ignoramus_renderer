@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "shader.h"
 
@@ -83,6 +84,79 @@ Shader::Shader(const char *vsFilepath, const char *fsFilepath)
     glDeleteShader(fragmentShaderId);
 }
 
+Shader::Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFilepath)
+{
+    unsigned int vsLength;
+    char *vsCode;
+    unsigned int gsLength;
+    char *gsCode;
+    unsigned int fsLength;
+    char *fsCode;
+    if (!ReadFile(vsFilepath, &vsCode, vsLength) || !ReadFile(gsFilepath, &gsCode, gsLength) || !ReadFile(fsFilepath, &fsCode, fsLength))
+    {
+        compilationSucceeded = false;
+        strcpy(compilationErrorMsg, "Failed reading shaders from files");
+
+        return;
+    }
+
+    unsigned int vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShaderId, 1, &vsCode, NULL);
+    glCompileShader(vertexShaderId);
+    if (CheckCompileErrors(vertexShaderId, "VERTEX"))
+    {
+        free(vsCode);
+        free(gsCode);
+        free(fsCode);
+
+        glDeleteShader(vertexShaderId);
+        return;
+    }
+
+    unsigned int geometryShaderId = glCreateShader(GL_GEOMETRY_SHADER);
+    glShaderSource(geometryShaderId, 1, &gsCode, NULL);
+    glCompileShader(geometryShaderId);
+    if (CheckCompileErrors(geometryShaderId, "GEOMETRY"))
+    {
+        free(vsCode);
+        free(gsCode);
+        free(fsCode);
+
+        glDeleteShader(vertexShaderId);
+        glDeleteShader(geometryShaderId);
+        return;
+    }
+
+    unsigned int fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShaderId, 1, &fsCode, NULL);
+    glCompileShader(fragmentShaderId);
+    if (CheckCompileErrors(fragmentShaderId, "FRAGMENT"))
+    {
+        free(vsCode);
+        free(gsCode);
+        free(fsCode);
+
+        glDeleteShader(vertexShaderId);
+        glDeleteShader(geometryShaderId);
+        glDeleteShader(fragmentShaderId);
+        return;
+    }
+
+    shaderProgramId = glCreateProgram();
+    glAttachShader(shaderProgramId, vertexShaderId);
+    glAttachShader(shaderProgramId, geometryShaderId);
+    glAttachShader(shaderProgramId, fragmentShaderId);
+    glLinkProgram(shaderProgramId);
+
+    CheckCompileErrors(shaderProgramId, "PROGRAM");
+    free(vsCode);
+    free(gsCode);
+    free(fsCode);
+    glDeleteShader(vertexShaderId);
+    glDeleteShader(geometryShaderId);
+    glDeleteShader(fragmentShaderId);
+}
+
 Shader::~Shader()
 {
 
@@ -95,7 +169,7 @@ void Shader::Use()
 
 bool Shader::CheckCompileErrors(unsigned int shaderId, const char *shaderType)
 {
-    if (strcmp(shaderType, "VERTEX") == 0 || strcmp(shaderType, "FRAGMENT") == 0)
+    if (strcmp(shaderType, "VERTEX") == 0 || strcmp(shaderType, "FRAGMENT") == 0 || strcmp(shaderType, "GEOMETRY") == 0)
     {
         glGetShaderiv(shaderId, GL_COMPILE_STATUS, (GLint*) &compilationSucceeded);
         if(!compilationSucceeded)
@@ -165,5 +239,6 @@ void Shader::SetUniform(const char *name, glm::mat3 data)
 
 void Shader::SetUniform(const char *name, glm::mat4 data)
 {
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
+    //glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, glm::value_ptr(data)); 
 }

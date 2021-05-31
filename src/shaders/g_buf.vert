@@ -2,10 +2,10 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec3 aTangent;
-//layout (location = 3) in vec3 aBitangent;
 layout (location = 3) in vec2 aTexCoords;
 
-out vec3 FragPos;
+out vec3 WorldFragPos;
+out vec4 FragPos;
 out vec2 TexCoords;
 out vec3 Normal;
 out mat3 Tbn;
@@ -22,8 +22,8 @@ uniform mat4 projection;
 
 void main()
 {
-    vec4 worldPos = model * vec4(aPos, 1.0);
-    FragPos = worldPos.xyz; 
+    WorldFragPos = (model * vec4(aPos, 1.0)).xyz;
+    FragPos = projection * view * model * vec4(aPos, 1.0);
     TexCoords = aTexCoords;
                     
     if (usingNormalMap && !showModelNormals)
@@ -31,11 +31,9 @@ void main()
         vec3 N = normalize(vec3(model * vec4(aNormal, 0.f)));
         vec3 tan = normalize(aTangent);
         vec3 T = normalize(vec3(model * vec4(tan, 0.f)));
-        //vec3 bitan = normalize(aBitangent);
-        //vec3 B = normalize(vec3(model * vec4(bitan, 0.f)));
+        Tangent = T;
         vec3 B = cross(N, T);
         Tbn = mat3(T, B, N);
-        //Tbn = mat3(model * vec4(aTangent, 0.f), model * vec4(bitangent, 0.f), model * vec4(aNormal, 0.f));
     }
     else
     {
@@ -43,8 +41,12 @@ void main()
         Normal = normalRecalculationMatrix * aNormal;
     }
 
-    mat3 m = transpose(inverse(mat3(model)));
-    Tangent = m * aTangent;
+    vec3 tan = normalize(aTangent);
+    vec3 T = normalize(vec3(model * vec4(tan, 0.f)));
+    Tangent = T;
 
-    gl_Position = projection * view * worldPos;
+    mat3 m = transpose(inverse(mat3(model)));
+
+    //gl_Position = projection * view * worldPos;
+    gl_Position = FragPos;
 }

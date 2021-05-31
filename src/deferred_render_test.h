@@ -10,12 +10,30 @@
 
 struct DeferredTest
 {
+    // control
+    bool pointShadows = false;
+    bool directionalShadows = true;
+    bool ssao = true;
+    //bool pointLight;
+
     unsigned int gBuffer;
 
+    unsigned int pointShadowFBO;
+    unsigned int directionalShadowFBO;
     unsigned int finalFb;
     unsigned int finalTexId;
 
+    unsigned int shadowDepthCubemap;
+    unsigned int shadowDepth;
+
+    float directionalBias;
+    float directionalAngleBias;
+    float pointBias;
+    float pointAngleBias;
+
     unsigned int depthStencil;
+    Shader pointShadowPass;
+    Shader directionalShadowPass;
     Shader geometryPass;
     Shader lightingPass;
     Shader quadPass;
@@ -40,7 +58,8 @@ struct DeferredTest
     unsigned int mainQuadVAO;
     std::vector<unsigned int> quadVAOs;
 
-    Transform lightTransform;
+    Transform pointLightTransform;
+    Transform directionalLightTransform;
     Transform groundTransform;
 
     Camera camera;

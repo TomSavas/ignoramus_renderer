@@ -11,6 +11,7 @@ Camera::Camera(float verticalFOV,
       nearClippingPlane(0.1f), farClippingPlane(100000.f)
 {
     projection = glm::perspective(glm::radians(verticalFOV), aspectRatio, nearClippingPlane, farClippingPlane);
+    //projection = glm::ortho(0.f, 1920.f, 0.f, 1080.f, -1.f, farClippingPlane);
 }
 
 void Camera::Update(GLFWwindow *window)
@@ -65,7 +66,7 @@ void Camera::Update(GLFWwindow *window)
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         moveDir -= transform.Up();
 
-    moveDir *= glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ? 4.f : 0.2f;
+    moveDir *= glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ? 10.f : 4.f;
 
     transform.pos += moveDir;
 }

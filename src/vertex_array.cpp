@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <assert.h>
 
 #include "vertex_array.h"
 
@@ -6,7 +7,10 @@ VertexArray::VertexArray()
 {
     GLenum err;
     while((err = glGetError()) != GL_NO_ERROR)
+    {
         printf("[pre gl gen vertex arrays] OpenGL error: %04x\n", err);
+        assert(false);
+    }
 
     glGenVertexArrays(1, &id);
 
@@ -71,7 +75,7 @@ void VertexArray::SetBufferLayout(BufferLayout bufferLayout)
     int attributeIndex = 0;
     for (BufferLayout::ConstIterator it = bufferLayout.Begin(); it != bufferLayout.End(); it++) 
     {
-        glEnableVertexAttribArray(attributeIndex);
+        glEnableVertexArrayAttrib(id, attributeIndex);
         glVertexAttribPointer(attributeIndex, it->vectorElementCount, it->glType,
                 it->normalized ? GL_TRUE : GL_FALSE, bufferLayout.Stride(),
                 (void*) bufferLayout.Offset(attributeIndex));

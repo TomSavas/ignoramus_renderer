@@ -13,6 +13,7 @@ public:
 
     Shader();
     Shader(const char *vsFilepath, const char *fsFilepath);
+    Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFilepath);
     ~Shader();
 
     void Use();

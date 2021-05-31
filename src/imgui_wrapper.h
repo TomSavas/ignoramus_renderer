@@ -6,12 +6,8 @@
 
 #include "GLFW/glfw3.h"
 
-class ImGuiWrapper
+struct ImGuiWrapper
 {
-private:
-    static constexpr char *glsl_version = "#version 130";
-
-public:
     static void Init(GLFWwindow *window)
     {
         IMGUI_CHECKVERSION();

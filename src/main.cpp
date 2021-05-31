@@ -15,7 +15,21 @@
 //tmp
 #include <glm/gtc/type_ptr.hpp>
 
-void ShowFPS()
+void GLAPIENTRY
+MessageCallback(GLenum source,
+        GLenum type,
+        GLuint id,
+        GLenum severity,
+        GLsizei length,
+        const GLchar* message,
+        const void* userParam)
+{
+    fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+            ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
+            type, severity, message );
+}
+
+void ShowFPS(DeferredTest &test)
 {
     static int frameCount = 0;
 
@@ -56,6 +70,30 @@ void ShowFPS()
         ImGui::Separator();
         ImGui::Text("MESA available VRAM: %u MB", availableMem);
 
+        ImGui::Separator();
+        ImGui::Text("Camera pos: %.4f %.4f %.4f", test.camera.transform.pos.x, test.camera.transform.pos.y, test.camera.transform.pos.z);
+        glm::vec3 rot = glm::eulerAngles(test.camera.transform.rot);
+        ImGui::Text("Camera rot: %.4f %.4f %.4f", rot.x, rot.y, rot.z);
+    }
+    ImGui::End();
+}
+
+void ShowSettings(DeferredTest &a)
+{
+    static bool open = true;
+    if (ImGui::Begin("Settings"), open)
+    {
+        ImGui::Checkbox("Point shadows", &a.pointShadows);
+        ImGui::Checkbox("Directional shadows", &a.directionalShadows);
+        ImGui::Checkbox("SSAO", &a.ssao);
+
+        ImGui::Separator();
+
+        ImGui::SliderFloat("Directional bias", &a.directionalBias, -0.000001f, 0.0000001f, "%.9f");
+        ImGui::SliderFloat("Directional angle bias", &a.directionalAngleBias, -0.0000001f, 0.0000001f, "%.9f");
+        ImGui::Spacing();
+        ImGui::SliderFloat("Point bias", &a.pointBias, 0.f, 0.0001f, "%.9f");
+        ImGui::SliderFloat("Point angle bias", &a.pointAngleBias, 0.f, 0.0001f, "%.9f");
     }
     ImGui::End();
 }
@@ -83,6 +121,9 @@ int main(void)
         return -1;
     }
 
+    glEnable              (GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(MessageCallback, 0);
+
     ImGuiWrapper::Init(window);
 
     DeferredTest test;
@@ -101,45 +142,16 @@ int main(void)
         if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
             test.model = new Model("../assets/sponza/sponza.obj");
 
-        ShowFPS();
+        ShowFPS(test);
+        ShowSettings(test);
 
         test.Render();
         ImGuiWrapper::Render();
 
-        /*
-        // save previous matrix
-        glPushMatrix();
-        // clear matrix
-        glLoadIdentity();
-        // apply rotations
-
-        glm::mat4 rot = glm::toMat4(test.camera.transform.rot);
-        glLoadMatrixf((float*)glm::value_ptr(rot));
-
-        // move the axes to the screen corner
-        // draw our axes
-        glBegin(GL_LINES);
-        // draw line for x axis
-        glColor3f(1.0, 0.0, 0.0);
-        glVertex3f(0.0, 0.0, 0.0);
-        glVertex3f(1.0, 0.0, 0.0);
-        // draw line for y axis
-        glColor3f(0.0, 1.0, 0.0);
-        glVertex3f(0.0, 0.0, 0.0);
-        glVertex3f(0.0, 1.0, 0.0);
-        // draw line for Z axis
-        glColor3f(0.0, 0.0, 1.0);
-        glVertex3f(0.0, 0.0, 0.0);
-        glVertex3f(0.0, 0.0, 1.0);
-        glEnd();
-        // load the previous matrix
-        glPopMatrix();
-        */
-
         glfwSwapBuffers(window);
     }
 
-    //ImGuiWrapper::Deinit();
+    ImGuiWrapper::Deinit();
     glfwTerminate();
 
     return 0;

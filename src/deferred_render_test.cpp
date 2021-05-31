@@ -4,9 +4,19 @@
 
 #include "GLFW/glfw3.h"
 #include "glm/gtx/transform.hpp"
+#include "glm/gtx/string_cast.hpp"
 
 #include "deferred_render_test.h"
 #include "shader.h"
+
+#define GL_ERROR_GUARD(msg) do {                          \
+        GLenum err = glGetError();                        \
+        if (err != GL_NO_ERROR)                           \
+        {                                                 \
+            printf("OpenGL error: %04x. %s\n", err, msg); \
+            assert(false);                                \
+        }                                                 \
+    } while(0);
 
 unsigned int CreateQuad(glm::vec2 ndcTopLeft, glm::vec2 ndcSize)
 {
@@ -28,9 +38,9 @@ unsigned int CreateQuad(glm::vec2 ndcTopLeft, glm::vec2 ndcSize)
     glBindVertexArray(quadVAO);
     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * 5, quadVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
+    glEnableVertexArrayAttrib(quadVAO, 0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);
+    glEnableVertexArrayAttrib(quadVAO, 1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 
     return quadVAO;
@@ -40,27 +50,83 @@ unsigned int CreateQuad(glm::vec2 ndcTopLeft, glm::vec2 ndcSize)
 #define SCR_HEIGHT 1080
 DeferredTest::DeferredTest()
 {
+    pointShadowPass = Shader("../src/shaders/point_shadow_cubemap.vert", "../src/shaders/point_shadow_cubemap.geom", "../src/shaders/point_shadow_cubemap.frag");
+    if (!pointShadowPass.compilationSucceeded)
+        printf("FAILED CREATING SHADER PROGRAM (point shadow pass):\n%s\n", pointShadowPass.compilationErrorMsg);
+    else
+        printf("Shader compilation succeeded\n");
+
+    directionalShadowPass = Shader("../src/shaders/directional_shadow.vert", "../src/shaders/directional_shadow.frag");
+    if (!directionalShadowPass.compilationSucceeded)
+        printf("FAILED CREATING SHADER PROGRAM (directional shadow pass):\n%s\n", directionalShadowPass.compilationErrorMsg);
+    else
+        printf("Shader compilation succeeded\n");
+
     geometryPass = Shader("../src/shaders/g_buf.vert", "../src/shaders/g_buf.frag");
     if (!geometryPass.compilationSucceeded)
-        printf("FAILED CREATING SHADER PROGRAM (geometry pass):\n%s", geometryPass.compilationErrorMsg);
+        printf("FAILED CREATING SHADER PROGRAM (geometry pass):\n%s\n", geometryPass.compilationErrorMsg);
     else
         printf("Shader compilation succeeded\n");
 
     lightingPass = Shader("../src/shaders/deferred_lighting.vert", "../src/shaders/deferred_lighting.frag");
     if (!lightingPass.compilationSucceeded)
-        printf("FAILED CREATING SHADER PROGRAM (lighting pass):\n%s", lightingPass.compilationErrorMsg);
+        printf("FAILED CREATING SHADER PROGRAM (lighting pass):\n%s\n", lightingPass.compilationErrorMsg);
     else
         printf("Shader compilation succeeded\n");
 
     quadPass = Shader("../src/shaders/texture.vert", "../src/shaders/texture.frag");
     if (!quadPass.compilationSucceeded)
-        printf("FAILED CREATING SHADER PROGRAM (quad pass):\n%s", quadPass.compilationErrorMsg);
+        printf("FAILED CREATING SHADER PROGRAM (quad pass):\n%s\n", quadPass.compilationErrorMsg);
     else
         printf("Shader compilation succeeded\n");
 
-    if (!geometryPass.compilationSucceeded || !lightingPass.compilationSucceeded || !quadPass.compilationSucceeded)
+    assert(pointShadowPass.compilationSucceeded && directionalShadowPass.compilationSucceeded && geometryPass.compilationSucceeded && lightingPass.compilationSucceeded && quadPass.compilationSucceeded);
+
+    // Point shadow fbo
     {
-        assert(false);
+        glGenFramebuffers(1, &pointShadowFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+
+        glGenTextures(1, &shadowDepthCubemap);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, shadowDepthCubemap);
+
+#define SHADOW_WIDTH 1024.f
+#define SHADOW_HEIGHT 1024.f
+        for (int i = 0; i < 6; i++)
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadowDepthCubemap, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    // Directional shadow fbo
+    {
+        glGenFramebuffers(1, &directionalShadowFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFBO);
+
+        glGenTextures(1, &shadowDepth);
+        glBindTexture(GL_TEXTURE_2D, shadowDepth);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowDepth, 0);
+
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     glGenFramebuffers(1, &gBuffer);
@@ -71,7 +137,7 @@ DeferredTest::DeferredTest()
     glBindRenderbuffer(GL_RENDERBUFFER, depthStencil);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depthStencil);
-  
+
     // - position color buffer
     glGenTextures(1, &gPosition);
     glBindTexture(GL_TEXTURE_2D, gPosition);
@@ -89,7 +155,7 @@ DeferredTest::DeferredTest()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
     normalTex = new Texture(gNormal, glm::vec2(SCR_WIDTH, SCR_HEIGHT));
-       
+
     // - color + specular color buffer
     glGenTextures(1, &gAlbedo);
     glBindTexture(GL_TEXTURE_2D, gAlbedo);
@@ -106,8 +172,8 @@ DeferredTest::DeferredTest()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gSpec, 0);
     specTex = new Texture(gSpec, glm::vec2(SCR_WIDTH, SCR_HEIGHT));
- 
-    // - tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
+
+    // - tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
     unsigned int attachments[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
     glDrawBuffers(4, attachments);
 
@@ -131,38 +197,128 @@ DeferredTest::DeferredTest()
 
     //groundModel = Model::DoubleSidedQuad(glm::vec3(1.f, 1.f, 1.f));
     //lightModel = Model::DoubleSidedQuad(glm::vec3(1.f, 1.f, 1.f));
-    model = new Model("../assets/suzanne.obj",
-            std::vector<std::pair<std::string, std::string>> { 
+    lightModel = new Model("../assets/suzanne.obj",
+            std::vector<std::pair<std::string, std::string>> {
                 std::make_pair("tex_diffuse", "textures/default.jpeg"),
                 std::make_pair("tex_normal", "textures/default.jpeg"),
-                //std::make_pair("tex_specular", "textures/default.jpeg") 
             });
+    //model = new Model("../assets/suzanne.obj",
+    //        std::vector<std::pair<std::string, std::string>> {
+    //            std::make_pair("tex_diffuse", "textures/default.jpeg"),
+    //            std::make_pair("tex_normal", "textures/default.jpeg"),
+    //            //std::make_pair("tex_specular", "textures/default.jpeg")
+    //        });
     //model = new Model("../assets/backpack/backpack.obj",
-    //        std::vector<std::pair<std::string, std::string>> { 
+    //        std::vector<std::pair<std::string, std::string>> {
     //            std::make_pair("tex_diffuse", "../assets/backpack/diffuse.jpg"),
     //            std::make_pair("tex_normal", "../assets/backpack/normal.png"),
-    //            std::make_pair("tex_specular", "../assets/backpack/specular.jpg") 
+    //            std::make_pair("tex_specular", "../assets/backpack/specular.jpg")
     //        });
-    //model = new Model("../assets/sponza/sponza.obj");
-    //        std::vector<std::pair<std::string, std::string>> { 
+    model = new Model("../assets/sponza/sponza.obj");
+    //        std::vector<std::pair<std::string, std::string>> {
     //            std::make_pair("tex_diffuse", "../assets/textures/default.jpeg"),
     //            std::make_pair("tex_normal", "../assets/textures/default.jpeg"),
-    //            std::make_pair("tex_specular", "../assets/textures/default.jpeg") 
+    //            std::make_pair("tex_specular", "../assets/textures/default.jpeg")
     //        });
     //model = new Model("../assets/dragon.obj");
 
     groundTransform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(90.f * glm::pi<float>() / 180.f, 0.f, 0.f)), glm::vec3(50.f, 50.f, 50.f));
-    lightTransform = Transform(glm::vec3(0.f, 10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.1f, 0.1f, 0.1f));
+    pointLightTransform = Transform(glm::vec3(0.f, 10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(10.f, 10.f, 10.f));
+    //directionalLightTransform = Transform(glm::vec3(1059.f, 1710.f, -225.f), glm::quat(glm::vec3(0.79f, -1.328f, 0.f)), glm::vec3(1.f, 1.f, 1.f));
+    //directionalLightTransform = Transform(glm::vec3(2437.f, 2277.f, 462.f), glm::quat(glm::vec3(0.8f, -1.264f, 0.f)), glm::vec3(1.f, 1.f, 1.f));
+    directionalLightTransform = Transform(glm::vec3(963.14f, 1505.95f, -226.6f), glm::quat(glm::vec3(0.6708f, -1.252, 0.f)), glm::vec3(1.f, 1.f, 1.f));
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void DeferredTest::Render()
 {
-    GLenum err;
-    while((err = glGetError()) != GL_NO_ERROR)
-        printf("opengl error: %04x\n", err);
+    static std::vector<Transform> transforms;
+    if (transforms.size() == 0)
+    {
+        transforms.push_back(Transform(glm::vec3(0.f, 0.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f, 1.f, 1.f)));
+        //for (int i = 0; i < 3; i++)
+        //{
+        //    transforms.push_back(Transform(glm::vec3(-5.f + 5.f*i, 0.f, 0.f)));
+        //    transforms.push_back(Transform(glm::vec3(0.f, 0.f, -5.f + 5.f*i)));
+        //}
+    }
 
+    if (pointShadows)
+    {
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_WIDTH);
+        glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glCullFace(GL_FRONT); // Resolve Peter Panning
+
+        float aspect = SHADOW_WIDTH/SHADOW_HEIGHT;
+        float near = 1.0f;
+        float far = 100000.0f;
+        glm::mat4 shadowProjection = glm::perspective(glm::radians(90.0f), aspect, near, far); 
+
+        std::vector<glm::mat4> shadowTransforms;
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
+        shadowTransforms.push_back(shadowProjection * glm::lookAt(pointLightTransform.pos, pointLightTransform.pos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
+
+        pointShadowPass.Use();
+        for (int i = 0; i < 6; i++)
+        {
+            char uniformName[11];
+            sprintf(uniformName, "shadowVP[%d]", i);
+            pointShadowPass.SetUniform(uniformName, shadowTransforms[i]);
+        }
+        pointShadowPass.SetUniform("lightPos", pointLightTransform.pos);
+        pointShadowPass.SetUniform("farPlane", far);
+
+        for (int i = 0; i < transforms.size(); i++)
+        {
+            pointShadowPass.SetUniform("model", transforms[i].Model());
+            model->Render(pointShadowPass);
+        }
+
+        glCullFace(GL_BACK);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glDepthMask(GL_TRUE);
+
+    if (directionalShadows)
+    {
+        //glViewport(0, 0, SHADOW_WIDTH, SHADOW_WIDTH);
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glCullFace(GL_FRONT); // Resolve Peter Panning
+
+        //glm::mat4 projection = glm::ortho(0.f, 1920.f, 1080.f, 0.f, -1.f, far);
+        //glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, near, far); 
+        glm::mat4 projection = camera.projection;
+        glm::mat4 view = glm::lookAt(directionalLightTransform.pos, directionalLightTransform.pos + directionalLightTransform.Forward(), directionalLightTransform.Up());
+
+        directionalShadowPass.Use();
+        directionalShadowPass.SetUniform("projection", projection);
+        directionalShadowPass.SetUniform("view", view);
+
+        directionalShadowPass.SetUniform("lightPos", directionalLightTransform.pos);
+        directionalShadowPass.SetUniform("farPlane", 100000.f);
+
+        for (int i = 0; i < transforms.size(); i++)
+        {
+            directionalShadowPass.SetUniform("model", transforms[i].Model());
+            model->Render(directionalShadowPass);
+        }
+
+        glCullFace(GL_BACK);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -194,16 +350,9 @@ void DeferredTest::Render()
         geometryPass.SetUniform("showModelNormals", false);
         geometryPass.SetUniform("showNonTBNNormals", false);
     }
-
-    static std::vector<Transform> transforms;
-    if (transforms.size() == 0)
+    if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
     {
-        transforms.push_back(Transform(glm::vec3(0.f, 0.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f, 1.f, 1.f)));
-        //for (int i = 0; i < 3; i++)
-        //{
-        //    transforms.push_back(Transform(glm::vec3(-5.f + 5.f*i, 0.f, 0.f)));
-        //    transforms.push_back(Transform(glm::vec3(0.f, 0.f, -5.f + 5.f*i)));
-        //}
+        directionalLightTransform = camera.transform;
     }
 
     // Render model
@@ -216,10 +365,10 @@ void DeferredTest::Render()
     // render ground
     geometryPass.SetUniform("model", groundTransform.Model());
     groundModel->Render(geometryPass);
-    // render light node
-    geometryPass.SetUniform("model", lightTransform.Model());
-    lightModel->Render(geometryPass);
     */
+    // render light node
+    geometryPass.SetUniform("model", pointLightTransform.Model());
+    lightModel->Render(geometryPass);
 
     glActiveTexture(GL_TEXTURE0);
     // lighting & composition pass
@@ -228,9 +377,20 @@ void DeferredTest::Render()
     glClear(GL_COLOR_BUFFER_BIT);
 
     lightingPass.Use();
-    lightingPass.SetUniform("lightPos", lightTransform.pos);
+    lightingPass.SetUniform("pointLightPos", pointLightTransform.pos);
     lightingPass.SetUniform("lightColor", glm::vec3(1.f, 1.f, 1.f));
     lightingPass.SetUniform("cameraPos", camera.transform.pos);
+
+    lightingPass.SetUniform("directionalBias", directionalBias);
+    lightingPass.SetUniform("directionalAngleBias", directionalAngleBias);
+
+    lightingPass.SetUniform("pointBias", pointBias);
+    lightingPass.SetUniform("pointAngleBias", pointAngleBias);
+
+    lightingPass.SetUniform("directionalLightPos", directionalLightTransform.pos);
+    glm::mat4 proj = camera.projection * glm::lookAt(directionalLightTransform.pos, directionalLightTransform.pos + directionalLightTransform.Forward(), directionalLightTransform.Up());
+
+    lightingPass.SetUniform("directionalLightViewProjection", proj);
 
     // bind gbuf textures
     glActiveTexture(GL_TEXTURE0);
@@ -249,12 +409,26 @@ void DeferredTest::Render()
     lightingPass.SetUniform("tex_specular", 3);
     specTex->Bind();
 
+    lightingPass.SetUniform("using_shadow_cubemap", pointShadows);
+    {
+        glActiveTexture(GL_TEXTURE4);
+        lightingPass.SetUniform("shadow_cubemap", 4);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, shadowDepthCubemap);
+    }
+
+    lightingPass.SetUniform("using_shadow_map", directionalShadows);
+    {
+        glActiveTexture(GL_TEXTURE5);
+        lightingPass.SetUniform("shadow_map", 5);
+        glBindTexture(GL_TEXTURE_2D, shadowDepth);
+    }
+
     glBindVertexArray(mainQuadVAO);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
     static float offset = 0.f;
-    lightTransform.pos = glm::vec3(glm::sin(offset) * 300.f, 500.f, glm::cos(offset) * 300.f);
-    offset += 0.03f;
+    pointLightTransform.pos = glm::vec3(-50.f + glm::sin(offset) * 100.f, 600.f, 200.f + glm::cos(offset) * 100.f);
+    offset += 0.015f;
 
     // determine which buffer to show
     std::vector<Texture*> texs = { albedoTex, posTex, normalTex, specTex, finalTex };
@@ -275,7 +449,7 @@ void DeferredTest::Render()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     quadPass.Use();
-    
+
     // render side quads
     for(int i = 0; i < texs.size(); i++)
     {
