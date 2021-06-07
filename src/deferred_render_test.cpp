@@ -2,6 +2,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include <vector>
+#include <algorithm>
+
 #include "GLFW/glfw3.h"
 #include "glm/gtx/transform.hpp"
 #include "glm/gtx/string_cast.hpp"
@@ -80,7 +83,14 @@ DeferredTest::DeferredTest()
     else
         printf("Shader compilation succeeded\n");
 
-    assert(pointShadowPass.compilationSucceeded && directionalShadowPass.compilationSucceeded && geometryPass.compilationSucceeded && lightingPass.compilationSucceeded && quadPass.compilationSucceeded);
+    forwardTransparencyPass = Shader("../src/shaders/forward_transparency.vert", "../src/shaders/forward_transparency.frag");
+    if (!forwardTransparencyPass.compilationSucceeded)
+        printf("FAILED CREATING SHADER PROGRAM (forward transparency pass):\n%s\n", forwardTransparencyPass.compilationErrorMsg);
+    else
+        printf("Shader compilation succeeded\n");
+
+    assert(pointShadowPass.compilationSucceeded && directionalShadowPass.compilationSucceeded && geometryPass.compilationSucceeded && 
+            lightingPass.compilationSucceeded && quadPass.compilationSucceeded && forwardTransparencyPass.compilationSucceeded);
 
     // Point shadow fbo
     {
@@ -222,6 +232,26 @@ DeferredTest::DeferredTest()
     //        });
     //model = new Model("../assets/dragon.obj");
 
+    transparentModel = new Model("../assets/suzanne.obj",
+            std::vector<std::pair<std::string, std::string>> {
+                std::make_pair("tex_diffuse", "textures/default.jpeg"),
+                std::make_pair("tex_normal", "textures/default.jpeg"),
+            });
+
+    //transparentModelTransform = Transform(glm::vec3(-200.f, 100.f, 0.f), glm::quat(glm::vec3(0.f, 90.f / 180.f * glm::pi<float>(), 0.f)), glm::vec3(75.f));
+
+    transparentModelData[0].opacity = 0.125f;
+    transparentModelData[1].opacity = 0.25f;
+    transparentModelData[2].opacity = 0.5f;
+
+    transparentModelData[0].color = glm::vec3(1.f, 0.f, 0.f);
+    transparentModelData[1].color = glm::vec3(0.f, 1.f, 0.f);
+    transparentModelData[2].color = glm::vec3(0.f, 0.f, 1.f);
+
+    transparentModelData[0].transform = Transform(glm::vec3(-200.f, 100.f, -25.f), glm::quat(glm::vec3(0.f, 90.f / 180.f * glm::pi<float>(), 0.f)), glm::vec3(75.f));
+    transparentModelData[1].transform = Transform(glm::vec3(-200.f, 100.f, -25.f), glm::quat(glm::vec3(0.f, 90.f / 180.f * glm::pi<float>(), 0.f)), glm::vec3(75.f));
+    transparentModelData[2].transform = Transform(glm::vec3(-200.f, 100.f, -25.f), glm::quat(glm::vec3(0.f, 90.f / 180.f * glm::pi<float>(), 0.f)), glm::vec3(75.f));
+
     groundTransform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(90.f * glm::pi<float>() / 180.f, 0.f, 0.f)), glm::vec3(50.f, 50.f, 50.f));
     pointLightTransform = Transform(glm::vec3(0.f, 10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(10.f, 10.f, 10.f));
     //directionalLightTransform = Transform(glm::vec3(1059.f, 1710.f, -225.f), glm::quat(glm::vec3(0.79f, -1.328f, 0.f)), glm::vec3(1.f, 1.f, 1.f));
@@ -233,6 +263,11 @@ DeferredTest::DeferredTest()
 
 void DeferredTest::Render()
 {
+    if (cameraOrbit)
+    {
+        camera.transform.rot = glm::quatLookAt(glm::normalize(camera.transform.pos), glm::vec3(0.f, 1.f, 0.f));
+    }
+
     static std::vector<Transform> transforms;
     if (transforms.size() == 0)
     {
@@ -450,8 +485,46 @@ void DeferredTest::Render()
     glClearColor(0.2f, 0.2f, 0.3f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    quadPass.Use();
+    // Blit depth and forward render transparent objects
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    glDepthMask(GL_FALSE);
+    quadPass.Use();
+    texs[texIndex]->Bind();
+    glBindVertexArray(mainQuadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    //glDepthMask(GL_TRUE);
+
+    // forward render transparent objects
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    forwardTransparencyPass.Use();
+    forwardTransparencyPass.SetUniform("projection", projection);
+    forwardTransparencyPass.SetUniform("view", view);
+
+    glDisable(GL_CULL_FACE);
+    transparentModelData[1].transform.pos = transparentModelData[0].transform.pos + glm::vec3(glm::sin(offset) * 200.f, 0.f, glm::cos(offset) * 200.f);
+    transparentModelData[2].transform.pos = transparentModelData[0].transform.pos - glm::vec3(glm::sin(offset) * 200.f, 0.f, glm::cos(offset) * 200.f);
+    std::vector<int> indices = { 0, 1, 2 };
+    std::sort(indices.begin(), indices.end(), [&](int a, int b) { return glm::distance(camera.transform.pos, transparentModelData[a].transform.pos) > glm::distance(camera.transform.pos, transparentModelData[b].transform.pos); });
+
+    for (int i = 0; i < 3; i++)
+    {
+        forwardTransparencyPass.SetUniform("model", transparentModelData[indices[i]].transform.Model());
+        forwardTransparencyPass.SetUniform("color", transparentModelData[indices[i]].color);
+        forwardTransparencyPass.SetUniform("opacity", transparentModelData[indices[i]].opacity);
+        transparentModel->Render(forwardTransparencyPass);
+    }
+    glEnable(GL_CULL_FACE);
+
+    glDisable(GL_BLEND);
+
+
+    glDepthMask(GL_TRUE);
+    quadPass.Use();
     // render side quads
     for(int i = 0; i < texs.size(); i++)
     {
@@ -460,13 +533,15 @@ void DeferredTest::Render()
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 
+    /*
     // wtf why is this not in reverse? maybe z testing?
     // main view
     texs[texIndex]->Bind();
     glBindVertexArray(mainQuadVAO);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    // postfx
+    */
 
+    // postfx
     glBindVertexArray(0);
 }

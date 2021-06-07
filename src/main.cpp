@@ -85,8 +85,7 @@ void ShowSettings(DeferredTest &a)
     {
         ImGui::Checkbox("Point shadows", &a.pointShadows);
         ImGui::Checkbox("Directional shadows", &a.directionalShadows);
-        ImGui::Checkbox("SSAO", &a.ssao);
-
+        /*
         ImGui::Separator();
 
         ImGui::SliderFloat("Directional bias", &a.directionalBias, -0.000001f, 0.0000001f, "%.9f");
@@ -94,10 +93,15 @@ void ShowSettings(DeferredTest &a)
         ImGui::Spacing();
         ImGui::SliderFloat("Point bias", &a.pointBias, 0.f, 0.0001f, "%.9f");
         ImGui::SliderFloat("Point angle bias", &a.pointAngleBias, 0.f, 0.0001f, "%.9f");
+        */
 
         ImGui::Separator();
 
         ImGui::SliderFloat("Gamma", &a.gamma, 0.f, 10.f);
+
+        ImGui::Separator();
+
+        ImGui::Checkbox("Camera orbit", &a.cameraOrbit);
     }
     ImGui::End();
 }

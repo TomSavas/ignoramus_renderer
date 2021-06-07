@@ -33,6 +33,9 @@ struct DeferredTest
 
     float gamma = 2.2;
 
+    //tmp
+    bool cameraOrbit;
+
     unsigned int depthStencil;
     Shader pointShadowPass;
     Shader directionalShadowPass;
@@ -40,9 +43,12 @@ struct DeferredTest
     Shader lightingPass;
     Shader quadPass;
 
+    Shader forwardTransparencyPass;
+
     Model *groundModel;
     Model *lightModel;
     Model *model;
+    Model *transparentModel;
     unsigned int gPosition, gNormal, gAlbedo, gSpec;
 
     Texture *modelDiffuseTex;
@@ -63,6 +69,15 @@ struct DeferredTest
     Transform pointLightTransform;
     Transform directionalLightTransform;
     Transform groundTransform;
+    //Transform transparentModelTransform;
+
+    struct TransparentModelData
+    {
+        glm::vec3 color;
+        float opacity;
+        Transform transform;
+    };
+    TransparentModelData transparentModelData[3];
 
     Camera camera;
 
