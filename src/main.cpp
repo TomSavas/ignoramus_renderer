@@ -11,9 +11,12 @@
 #include "imgui_wrapper.h"
 
 #include "deferred_render_test.h"
+#include "scene.h"
 
 //tmp
 #include <glm/gtc/type_ptr.hpp>
+
+#include "log.h"
 
 void GLAPIENTRY
 MessageCallback(GLenum source,
@@ -24,7 +27,7 @@ MessageCallback(GLenum source,
         const GLchar* message,
         const void* userParam)
 {
-    fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+    LOG_TAG(OGL, stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s",
             ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
             type, severity, message );
 }
@@ -56,7 +59,13 @@ void ShowFPS(DeferredTest &test)
     ImGui::SetNextWindowBgAlpha(0.35f); // Transparent background
     if (ImGui::Begin("Example: Simple overlay", &open, window_flags))
     {
-        ImGui::Text("Ignoramus v.0.0.1\n");
+        ImGui::Text("Ignoramus v.0.0.1");
+        ImGui::SameLine();
+#ifdef DEBUG
+        ImGui::TextColored(ImVec4(1.f, 0.f, 0.f, 1.f), "DEBUG");
+#else
+        ImGui::TextColored(ImVec4(0.f, 1.f, 0.f, 1.f), "RELEASE");
+#endif
         ImGui::Separator();
 
         static const unsigned char *vendor = glGetString(GL_VENDOR);
@@ -71,37 +80,44 @@ void ShowFPS(DeferredTest &test)
         ImGui::Text("MESA available VRAM: %u MB", availableMem);
 
         ImGui::Separator();
-        ImGui::Text("Camera pos: %.4f %.4f %.4f", test.camera.transform.pos.x, test.camera.transform.pos.y, test.camera.transform.pos.z);
-        glm::vec3 rot = glm::eulerAngles(test.camera.transform.rot);
-        ImGui::Text("Camera rot: %.4f %.4f %.4f", rot.x, rot.y, rot.z);
+
+#define VBO_FREE_MEMORY_ATI          0x87FB
+#define TEXTURE_FREE_MEMORY_ATI      0x87FC
+#define RENDERBUFFER_FREE_MEMORY_ATI 0x87FD
+        GLint vbo[4] = {0, 0, 0, 0};
+        GLint tex[4] = {0, 0, 0, 0};
+        GLint renderbuf[4] = {0, 0, 0, 0};
+        glGetIntegerv(VBO_FREE_MEMORY_ATI, vbo);
+        glGetIntegerv(TEXTURE_FREE_MEMORY_ATI, tex);
+        glGetIntegerv(RENDERBUFFER_FREE_MEMORY_ATI, renderbuf);
+
+        // Kinda useless, displays the complete amount of used vram
+        ImGui::Text("ATI VBO VRAM      ATI TEXTURE VRAM    ATI RENDERBUFFER RAM");
+        ImGui::Text("TOTAL: %4u MB    TOTAL: %4u MB      TOTAL: %4u MB", vbo[2] / 1024, tex[2] / 1024, renderbuf[2] / 1024);
+        ImGui::Text(" USED: %4u MB     USED: %4u MB       USED: %4u MB", (vbo[2] - vbo[0]) / 1024, (tex[2] - tex[0]) / 1024, (renderbuf[2] - renderbuf[0]) / 1024);
+        ImGui::Text(" FREE: %4u MB     FREE: %4u MB       FREE: %4u MB", vbo[0] / 1024, tex[0] / 1024, renderbuf[0] / 1024);
     }
     ImGui::End();
 }
 
-void ShowSettings(DeferredTest &a)
+void ShowSettings(Scene& scene)
 {
     static bool open = true;
     if (ImGui::Begin("Settings"), open)
     {
-        ImGui::Checkbox("Point shadows", &a.pointShadows);
-        ImGui::Checkbox("Directional shadows", &a.directionalShadows);
-        /*
-        ImGui::Separator();
+        ImGui::Text("Pixel size");
+        ImGui::SameLine();
+        ImGui::SliderInt("##Pixel size", &scene.sceneParams.pixelSize, 1, 50);
 
-        ImGui::SliderFloat("Directional bias", &a.directionalBias, -0.000001f, 0.0000001f, "%.9f");
-        ImGui::SliderFloat("Directional angle bias", &a.directionalAngleBias, -0.0000001f, 0.0000001f, "%.9f");
-        ImGui::Spacing();
-        ImGui::SliderFloat("Point bias", &a.pointBias, 0.f, 0.0001f, "%.9f");
-        ImGui::SliderFloat("Point angle bias", &a.pointAngleBias, 0.f, 0.0001f, "%.9f");
-        */
+        ImGui::Text("Wireframe");
+        ImGui::SameLine();
+        ImGui::Checkbox("##wireframe", (bool*)&scene.sceneParams.wireframe);
 
-        ImGui::Separator();
-
-        ImGui::SliderFloat("Gamma", &a.gamma, 0.f, 10.f);
-
-        ImGui::Separator();
-
-        ImGui::Checkbox("Camera orbit", &a.cameraOrbit);
+        static bool vsync = true;
+        ImGui::Text("VSync");
+        ImGui::SameLine();
+        if (ImGui::Checkbox("##vsync", &vsync))
+            glfwSwapInterval(vsync ? 1 : 0);
     }
     ImGui::End();
 }
@@ -129,29 +145,38 @@ int main(void)
         return -1;
     }
 
-    glEnable              (GL_DEBUG_OUTPUT);
+    glEnable (GL_DEBUG_OUTPUT);
     glDebugMessageCallback(MessageCallback, 0);
 
     ImGuiWrapper::Init(window);
-
     DeferredTest test;
-    test.window = window;
+
+    // Intro de-pixelation effect
+    test.scene.sceneParams.pixelSize = 1000;
+    test.scene.sceneParams.wireframe = 0;
+    bool introDone = false;
 
     glClearColor(0.2f, 0.2f, 0.3f, 1.f);
     bool showDemoWindow = true;
     while (!glfwWindowShouldClose(window)) 
     {
+        // Intro de-pixelation effect
+        if (!introDone)
+        {
+            if (test.scene.sceneParams.pixelSize > 1)
+                test.scene.sceneParams.pixelSize -= test.scene.sceneParams.pixelSize * 0.1;
+            else
+                introDone = true;
+        }
+
         glfwPollEvents();
         glClear(GL_COLOR_BUFFER_BIT);
 
         ImGuiWrapper::PreRender();
         test.camera.Update(window);
 
-        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
-            test.model = new Model("../assets/sponza/sponza.obj");
-
         ShowFPS(test);
-        ShowSettings(test);
+        ShowSettings(test.scene);
 
         test.Render();
         ImGuiWrapper::Render();

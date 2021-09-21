@@ -6,7 +6,7 @@ Model::Model(const char *filepath, std::vector<std::pair<std::string, std::strin
     loader.LoadFile(filepath);
 
     for (int i = 0; i < loader.LoadedMeshes.size(); i++)
-        meshes.push_back(Mesh(loader.LoadedMeshes[i], texturesWithPaths));
+        meshes.push_back(Mesh(loader.LoadedMeshes[i], OPAQUE, texturesWithPaths));
 }
 
 Model::Model(objl::Mesh mesh, std::vector<std::pair<std::string, std::string>> texturesWithPaths)

@@ -1,7 +1,10 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <glm/gtc/type_ptr.hpp>
+
+#include "log.h"
 
 #include "shader.h"
 
@@ -82,6 +85,13 @@ Shader::Shader(const char *vsFilepath, const char *fsFilepath)
     free(fsCode);
     glDeleteShader(vertexShaderId);
     glDeleteShader(fragmentShaderId);
+
+    SetupUniformBlockBindings();
+
+    if (!compilationSucceeded)
+        printf("FAILED CREATING SHADER PROGRAM (%s, %s) :\n%s\n", vsFilepath, fsFilepath, compilationErrorMsg);
+    else
+        printf("Shader compilation succeeded (%s, %s)\n", vsFilepath, fsFilepath);
 }
 
 Shader::Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFilepath)
@@ -155,6 +165,13 @@ Shader::Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFil
     glDeleteShader(vertexShaderId);
     glDeleteShader(geometryShaderId);
     glDeleteShader(fragmentShaderId);
+
+    SetupUniformBlockBindings();
+
+    if (!compilationSucceeded)
+        printf("FAILED CREATING SHADER PROGRAM (%s, %s, %s) :\n%s\n", vsFilepath, gsFilepath, fsFilepath, compilationErrorMsg);
+    else
+        printf("Shader compilation succeeded (%s, %s, %s)\n", vsFilepath, gsFilepath, fsFilepath);
 }
 
 Shader::~Shader()
@@ -165,6 +182,7 @@ Shader::~Shader()
 void Shader::Use()
 {
     glUseProgram(shaderProgramId);
+    boundUniforms.clear();
 }
 
 bool Shader::CheckCompileErrors(unsigned int shaderId, const char *shaderType)
@@ -196,49 +214,110 @@ bool Shader::CheckCompileErrors(unsigned int shaderId, const char *shaderType)
     return !compilationSucceeded;
 }
 
-void Shader::SetUniform(const char *name, bool data)
+GLint Shader::GetUniformLocation(const char* name)
 {
     GLint location = glGetUniformLocation(shaderProgramId, name);
-    glUniform1i(location, (int)data); 
+    assert(location != GL_INVALID_VALUE);
+    boundUniforms.insert(std::string(name));
+
+    return location;
+}
+
+void Shader::SetUniform(const char *name, bool data)
+{
+    glUniform1i(GetUniformLocation(name), (int)data); 
 }
 
 void Shader::SetUniform(const char *name, int data)
 {
-    glUniform1i(glGetUniformLocation(shaderProgramId, name), data); 
+    glUniform1i(GetUniformLocation(name), data); 
 }
 
 void Shader::SetUniform(const char *name, float data)
 {
-    glUniform1f(glGetUniformLocation(shaderProgramId, name), data); 
+    glUniform1f(GetUniformLocation(name), data); 
 }
 
 void Shader::SetUniform(const char *name, glm::vec2 data)
 {
-    glUniform2fv(glGetUniformLocation(shaderProgramId, name), 1, &data[0]); 
+    glUniform2fv(GetUniformLocation(name), 1, &data[0]); 
 }
 
 void Shader::SetUniform(const char *name, glm::vec3 data)
 {
-    glUniform3fv(glGetUniformLocation(shaderProgramId, name), 1, &data[0]); 
+    glUniform3fv(GetUniformLocation(name), 1, &data[0]); 
 }
 
 void Shader::SetUniform(const char *name, glm::vec4 data)
 {
-    glUniform4fv(glGetUniformLocation(shaderProgramId, name), 1, &data[0]); 
+    glUniform4fv(GetUniformLocation(name), 1, &data[0]); 
 }
 
 void Shader::SetUniform(const char *name, glm::mat2 data)
 {
-    glUniformMatrix2fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
+    glUniformMatrix2fv(GetUniformLocation(name), 1, GL_FALSE, &data[0][0]); 
 }
 
 void Shader::SetUniform(const char *name, glm::mat3 data)
 {
-    glUniformMatrix3fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
+    glUniformMatrix3fv(GetUniformLocation(name), 1, GL_FALSE, &data[0][0]); 
 }
 
 void Shader::SetUniform(const char *name, glm::mat4 data)
 {
     //glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, glm::value_ptr(data)); 
+    glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(data)); 
+}
+
+void Shader::AddDummyForUnboundTextures(int dummyTextureUnit)
+{
+    int unused;
+    GLenum type;
+    char name[128];
+
+    int count = 0;
+    glGetProgramiv(shaderProgramId, GL_ACTIVE_UNIFORMS, &count);
+    for (int i = 0; i < count; i++)
+    {
+        glGetActiveUniform(shaderProgramId, i, sizeof(name), &unused, &unused, &type, name);
+
+        // Definitely not exhaustive...
+        bool isTexture = type == GL_SAMPLER_1D || type == GL_SAMPLER_2D || type == GL_SAMPLER_3D;
+        bool isCubemap = type == GL_SAMPLER_CUBE;
+        if (boundUniforms.find(std::string(name)) == boundUniforms.end())
+        {
+            if (isTexture)
+            {
+                LOG_WARN("Unbound tex found: %s. Binding dummy texture.", name);
+                // Doesn't need activating, we're always keeping our dummy texture unit active
+                SetUniform(name, dummyTextureUnit);
+            }
+            else if (isCubemap)
+            {
+                // TODO
+                LOG_WARN("Unbound cubemap found: %s. Binding dummy cubemap.", name);
+                assert(false);
+            }
+        }
+    }
+}
+
+void Shader::ReportUnboundUniforms()
+{
+    // Reports on free floating uniforms. Can't deal with uniform buffers though
+
+    int unused;
+    int count = 0;
+    GLenum type;
+    char name[128];
+    glGetProgramiv(shaderProgramId, GL_ACTIVE_UNIFORMS, &count);
+    for (int i = 0; i < count; i++)
+    {
+        glGetActiveUniform(shaderProgramId, (GLuint)i, 128, &unused, &unused, &type, name);
+
+        if (boundUniforms.find(std::string(name)) == boundUniforms.end())
+        {
+            LOG_ERROR("Unbound uniform: %s. Type: %x", name, type);
+        }
+    }
 }

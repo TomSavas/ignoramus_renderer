@@ -1,44 +1,86 @@
 #version 330
-layout (location = 0) out vec4 fragColor;
+//layout (location = 0) out vec4 fragColor;
+out vec4 fragColor;
+
+layout (std140) uniform SceneParams
+{
+    int pixelSize;
+    bool wireframe;
+    float gamma;
+};
+
+layout (std140) uniform CameraParams
+{
+    mat4 view;
+    mat4 projection;
+    vec3 cameraPos;
+};
+
+layout (std140) uniform Lighting
+{
+    bool usingShadowCubemap;
+    bool usingShadowMap;
+
+    vec3 pointLightPos;
+    vec3 directionalLightPos;
+
+    mat4 directionalLightViewProjection;
+
+    float directionalBias;
+    float directionalAngleBias;
+
+    float pointBias;
+    float pointAngleBias;
+};
+
+uniform samplerCube shadow_cubemap;
+uniform sampler2D shadow_map;
 
 uniform sampler2D tex_pos;
 uniform sampler2D tex_diffuse;
 uniform sampler2D tex_normal;
 uniform sampler2D tex_specular;
 
-uniform samplerCube shadow_cubemap;
-uniform sampler2D shadow_map;
-
-uniform vec3 pointLightPos;
+//uniform vec3 pointLightPos;
 uniform vec3 lightColor;
 
-uniform vec3 cameraPos;
+//uniform vec3 directionalLightPos;
+//uniform mat4 directionalLightViewProjection;
 
-uniform vec3 directionalLightPos;
-uniform mat4 directionalLightViewProjection;
-
-uniform bool using_shadow_cubemap;
-uniform bool using_shadow_map;
+//uniform bool usingShadowCubemap;
+//uniform bool usingShadowMap;
 
 float farPlane = 100000.f;
 
-uniform float directionalBias;
-uniform float directionalAngleBias;
+//uniform float directionalBias;
+//uniform float directionalAngleBias;
+//
+//uniform float pointBias;
+//uniform float pointAngleBias;
 
-uniform float pointBias;
-uniform float pointAngleBias;
 
-uniform float gamma;
+float linearize_depth(float d, float zNear, float zFar)
+{
+    d = 2.f * d - 1.f;
+    return 2.f * zNear * zFar / (zFar + zNear - d * (zFar - zNear));
+}
 
 float shadowIntensity(vec4 fragPos, vec3 normal)
 {
-    if (!using_shadow_cubemap && !using_shadow_map)
+    // Something very very VERY bad is going on... usingShadowCubemap seems to be set to true
+    // there has to be some major uniform fuck up happening then
+    //return 0.f;
+
+
+    if (!usingShadowCubemap && !usingShadowMap)
         return 0.f;
 
     float shadow = 0.f;
 
+    //TEMP: disable due to not having a dummy cubemap to bind
+    /*
     // point lights
-    if (using_shadow_cubemap)
+    if (usingShadowCubemap)
     {
         vec3 lightToFrag = fragPos.xyz - pointLightPos;
         float lightNormalDot = dot(normalize(lightToFrag), normalize(normal));
@@ -56,7 +98,9 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
             //shadow += currentDepth - bias > closestDepth ? 1.0 : 0.0; 
 
             // PCF
-            vec2 texelSize = 1.f / textureSize(shadow_map, 0);
+            // TODO: just changed this on a whim, but I don't think it should be shadow_map
+            //vec2 texelSize = 1.f / textureSize(shadow_map, 0);
+            vec2 texelSize = 1.f / textureSize(shadow_cubemap, 0);
 
             float samples = 4.f;
             float offset = 1.0f;
@@ -69,7 +113,6 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
                     for (float z = -offset; z < offset; z += offset / (samples / 2.f))
                     {
                         float pcfDepth = texture(shadow_cubemap, lightToFrag + vec3(x, y, z)).r * 100000.f;
-                        //float pcfDepth = texture(shadow_cubemap, lightToFrag).r * 100000.f;
                         pcfShadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0; 
                     }
                 }
@@ -77,9 +120,10 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
             shadow += pcfShadow / (samples * samples * samples);
         }
     }
+    */
 
     // directional lights
-    if (using_shadow_map)
+    if (usingShadowMap)
     {
         vec4 lightSpaceFragPos = directionalLightViewProjection * vec4(fragPos.xyz, 1.f);
         vec3 lightSpaceFragPosNDC = lightSpaceFragPos.xyz / lightSpaceFragPos.w;
@@ -88,7 +132,8 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
         //float currentDepth = normalizedLightSpaceFragPos.z;// * 100000.f;
 
         vec3 lightToFrag = fragPos.xyz - directionalLightPos;
-        float currentDepth = length(lightToFrag);
+        float currentDepth = lightSpaceFragPos.z / farPlane * 8.f; // <-------- TODO: figure out what the fuck is up with this retarded shit -- why the far planes differ for camera/light projections?
+        //float currentDepth = length(lightToFrag);
 
         float bias = max(directionalAngleBias * (1.0 - dot(normalize(normal), normalize(lightToFrag))), directionalBias) * farPlane;
         // Non PCF
@@ -102,14 +147,16 @@ float shadowIntensity(vec4 fragPos, vec3 normal)
         {
             for (int y = -1; y <= 1; y++)
             {
-                float pcfDepth = texture(shadow_map, normalizedLightSpaceFragPos.xy + vec2(x, y) * texelSize).r * 100000.f;
-                pcfShadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0; 
+                //float pcfDepth = texture(shadow_map, normalizedLightSpaceFragPos.xy + vec2(x, y) * texelSize).r * 100000.f;
+                float pcfDepth = linearize_depth(texture(shadow_map, normalizedLightSpaceFragPos.xy + vec2(x, y) * texelSize).r, 1.f, 100000.f) / farPlane;
+                //float depth = linearize_depth(texture(shadow_map, fragmentPos).r, 1.f, 100000.f) / 100000.f;
+                pcfShadow += currentDepth > pcfDepth ? 1.0 : 0.0; 
             }
         }
         shadow += pcfShadow / 9.f;
     }
 
-    return shadow / ((using_shadow_map && using_shadow_cubemap) ? 2.f : 1.f);
+    return shadow / ((usingShadowMap && usingShadowCubemap) ? 2.f : 1.f);
 }
 
 float lightAttenuation(vec3 fragPos)
@@ -144,4 +191,11 @@ void main()
 
     // Gamma correction
     fragColor = pow(color, vec4(vec3(1.f / gamma), 1.f));
+    //fragColor = specularIntensityColor;
+
+    //float depth = linearize_depth(texture(shadow_map, fragmentPos).r, 1.f, 100000.f) / farPlane;
+    //vec4 lightSpaceFragPos = directionalLightViewProjection * vec4(pos.xyz, 1.f);
+    //float depth = lightSpaceFragPos.z / farPlane * 10.f;
+    //fragColor = vec4(vec3(depth), 1.f);
+    //fragColor = vec4(vec3(currentDepth), 1.f);
 }

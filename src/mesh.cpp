@@ -12,8 +12,10 @@ glm::fvec2 ToVec2(objl::Vector2 vec)
     return glm::fvec2(vec.X, vec.Y);
 }
 
-Mesh::Mesh(objl::Mesh &mesh, std::vector<std::pair<std::string, std::string>> overrideTexturesWithPaths)
+Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std::string>> overrideTexturesWithPaths)
 {
+    meshTag = tag;
+
     glm::fvec3 *tangents = (glm::fvec3*) malloc(sizeof(glm::fvec3) * mesh.Vertices.size());
     assert(tangents != nullptr);
 
@@ -132,4 +134,34 @@ void Mesh::Render(Shader &shader)
     vertexArray.Bind();
     glDrawElements(GL_TRIANGLES, vertexArray.GetIndexCount(), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
+}
+
+/*static*/ Mesh Mesh::ScreenQuadMesh()
+{
+    float vertices[] = {
+        // pos           // normals     // uvs
+        -1.f,  1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 1.f,
+        -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f,
+         1.f,  1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+         1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 0.f,
+    };
+
+    objl::Mesh mesh;
+    mesh.MeshName = "screen quad";
+    for (int i = 0; i < 4; i++)
+    {
+        mesh.Vertices.push_back(
+            {
+                objl::Vector3(vertices[i*8 + 0], vertices[i*8 + 1], vertices[i*8 + 2]),
+                objl::Vector3(vertices[i*8 + 3], vertices[i*8 + 4], vertices[i*8 + 5]),
+                objl::Vector2(vertices[i*8 + 6], vertices[i*8 + 7])
+            });
+    }
+    mesh.Indices = 
+    {
+        1, 2, 0,
+        2, 1, 3 
+    };
+
+    return Mesh(mesh, SCREEN_QUAD);
 }
