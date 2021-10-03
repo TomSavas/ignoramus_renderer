@@ -1,6 +1,6 @@
 #version 330
-//layout (location = 0) out vec4 fragColor;
-out vec4 fragColor;
+layout (location = 0) out vec3 fragColor;
+//out vec4 fragColor;
 
 layout (std140) uniform SceneParams
 {
@@ -190,7 +190,7 @@ void main()
     vec4 color = ambientIntensityColor + (1.f - shadowIntensity(pos, normal.xyz)) * (diffuseIntensityColor + specularIntensityColor);
 
     // Gamma correction
-    fragColor = pow(color, vec4(vec3(1.f / gamma), 1.f));
+    fragColor = pow(color.xyz, vec3(1.f / gamma));
     //fragColor = specularIntensityColor;
 
     //float depth = linearize_depth(texture(shadow_map, fragmentPos).r, 1.f, 100000.f) / farPlane;

@@ -27,6 +27,7 @@ struct MeshWithMaterial
 struct Scene
 {
     std::unordered_map<MeshTag, std::vector<MeshWithMaterial>> meshes;
+    bool disableOpaque = false;
 
     struct SceneParams
     {

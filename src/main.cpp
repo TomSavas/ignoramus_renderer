@@ -30,6 +30,7 @@ MessageCallback(GLenum source,
     LOG_TAG(OGL, stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s",
             ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
             type, severity, message );
+    assert(type != GL_DEBUG_TYPE_ERROR);
 }
 
 void ShowFPS(DeferredTest &test)
@@ -96,11 +97,14 @@ void ShowFPS(DeferredTest &test)
         ImGui::Text("TOTAL: %4u MB    TOTAL: %4u MB      TOTAL: %4u MB", vbo[2] / 1024, tex[2] / 1024, renderbuf[2] / 1024);
         ImGui::Text(" USED: %4u MB     USED: %4u MB       USED: %4u MB", (vbo[2] - vbo[0]) / 1024, (tex[2] - tex[0]) / 1024, (renderbuf[2] - renderbuf[0]) / 1024);
         ImGui::Text(" FREE: %4u MB     FREE: %4u MB       FREE: %4u MB", vbo[0] / 1024, tex[0] / 1024, renderbuf[0] / 1024);
+
+        ImGui::Separator();
+        ImGui::Text("Camera position: %.4f, %.4f, %.4f", test.camera.transform.pos.x, test.camera.transform.pos.y, test.camera.transform.pos.z);
     }
     ImGui::End();
 }
 
-void ShowSettings(Scene& scene)
+void ShowSettings(DeferredTest& test, Scene& scene)
 {
     static bool open = true;
     if (ImGui::Begin("Settings"), open)
@@ -118,6 +122,44 @@ void ShowSettings(Scene& scene)
         ImGui::SameLine();
         if (ImGui::Checkbox("##vsync", &vsync))
             glfwSwapInterval(vsync ? 1 : 0);
+
+        ImGui::Separator();
+        ImGui::Text("Disable opaque geometry");
+        ImGui::SameLine();
+        static bool disableOpaque = false;
+        ImGui::Checkbox("##opaque", &scene.disableOpaque);
+
+        ImGui::Separator();
+
+        for (auto* pass : test.pipeline.passes)
+        {
+            for (int i = 0; i < pass->attachments.size(); i += 3)
+            {
+                for (int j = 0; j < 3 && i+j < pass->attachments.size(); j++)
+                {
+                    RenderpassAttachment* attachment = pass->attachments[i + j];
+                    ImGui::Image((void*)attachment->id, ImVec2(512, 512 * 9/16), ImVec2(0, 1), ImVec2(1, 0));
+                    if (j < 2 && i+j < pass->attachments.size()-1)
+                        ImGui::SameLine();
+                }
+                for (int j = 0; j < 3 && i+j < pass->attachments.size(); j++)
+                {
+                    RenderpassAttachment* attachment = pass->attachments[i + j];
+                    char buf[128];
+                    sprintf(buf, "%s (%d)", attachment->name, attachment->id);
+                    ImGui::Text("%*s", j == 0 ? 0 : 80, buf);
+                    if (j < 2 && i+j < pass->attachments.size()-1)
+                        ImGui::SameLine();
+                }
+            }
+
+            //for (auto* attachment : pass->attachments)
+            //{
+            //    ImGui::Image((void*)attachment->id, ImVec2(512, 512 * 9/16), ImVec2(0, 1), ImVec2(1, 0));
+            //    ImGui::SameLine();
+            //    ImGui::Text("%s (%d)", attachment->name, attachment->id);
+            //}
+        }
     }
     ImGui::End();
 }
@@ -149,6 +191,8 @@ int main(void)
     glDebugMessageCallback(MessageCallback, 0);
 
     ImGuiWrapper::Init(window);
+    // NOTE: Fix my harware issue, for a phantom controller always holding down on one joystick
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad; 
     DeferredTest test;
 
     // Intro de-pixelation effect
@@ -157,7 +201,6 @@ int main(void)
     bool introDone = false;
 
     glClearColor(0.2f, 0.2f, 0.3f, 1.f);
-    bool showDemoWindow = true;
     while (!glfwWindowShouldClose(window)) 
     {
         // Intro de-pixelation effect
@@ -176,7 +219,7 @@ int main(void)
         test.camera.Update(window);
 
         ShowFPS(test);
-        ShowSettings(test.scene);
+        ShowSettings(test, test.scene);
 
         test.Render();
         ImGuiWrapper::Render();

@@ -3,117 +3,120 @@
 
 #include "mesh.h"
 
-enum class AttachmentAccess
-{
-    READ_WRITE = 0,
-    WRITE,
-};
 enum class AttachmentFormat
 {
-    FLOAT_1 = 0,
-    FLOAT_2,
+    FLOAT_1,
     FLOAT_3,
     FLOAT_4,
     DEPTH,
-    DEPTH_STENCIL,
+    DEPTH_STENCIL
 };
-enum class AttachmentPurpose
-{
-    DEPTH = 0,
-    STENCIL,
-    DEPTH_STENCIL,
-    COLOR,
-};
+GLenum ToGLInternalFormat(AttachmentFormat format);
+GLenum ToGLFormat(AttachmentFormat format);
+GLenum ToGLType(AttachmentFormat format);
 
-struct Attachment
+struct RenderpassAttachment
 {
-    const char *name;
-
+    const char* name;
     AttachmentFormat format;
-    AttachmentPurpose purpose;
-    AttachmentAccess access;
+
+    RenderpassAttachment(const char* name, AttachmentFormat format) : name(name), format(format) {}
 
     unsigned int id;
 };
 
-enum RequestAttachmentsAs
+struct PassSettings
 {
-    AS_TEXTURE,
-    AS_ATTACHMENT,
-    AS_BLIT
-};
+    bool ignoreApplication;
+    bool ignoreClear;
 
-struct RequestedAttachment
-{
-    const char* name;
-    RequestAttachmentsAs requestAs;
-
-    // Only if AS_BLIT
-    const char* bindAs;
-};
-
-struct RenderpassSettings
-{
     std::vector<GLenum> enable;   
     GLenum cullFace;
 
     GLboolean depthMask;
+    GLenum depthFunc;
 
+    GLenum colorMask[4];
     glm::vec4 clearColor;
     GLenum clear;
 
     GLenum srcBlendFactor;
     GLenum dstBlendFactor;
 
-    static RenderpassSettings Default()
+    void Clear();
+    void Apply();
+    void Apply(PassSettings& previousSettings);
+
+    static PassSettings DefaultSettings();
+    static PassSettings DefaultRenderpassSettings();
+    static PassSettings DefaultSubpassSettings();
+    static PassSettings DefaultOutputRenderpassSettings();
+};
+
+struct SubpassAttachment
+{
+    enum AttachType
     {
-        RenderpassSettings settings;
+        AS_COLOR,
+        AS_DEPTH,
+        AS_TEXTURE,
+        AS_BLIT
+    };
 
-        settings.enable = { GL_DEPTH_TEST, GL_CULL_FACE };
-        settings.cullFace = GL_BACK;
-        settings.depthMask = GL_TRUE;
-        settings.clearColor = glm::vec4(1.f, 0.f, 0.f, 0.f);
-        settings.clear = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT;
-        settings.srcBlendFactor = GL_SRC_ALPHA;
-        settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+    RenderpassAttachment* renderpassAttachment;
+    AttachType type;
 
-        return settings;
-    }
+    SubpassAttachment(RenderpassAttachment* renderpassAttachment, AttachType type, const char* useFor = "\0") : renderpassAttachment(renderpassAttachment), type(type), useFor(useFor) {}
+
+    // Only if AS_TEXTURE or AS_BLIT
+    const char* useFor;
+};
+
+struct Subpass
+{
+    const char* name;
+    Shader* shader;
+    MeshTag acceptedMeshTags;
+    std::vector<SubpassAttachment> attachments;
+    PassSettings settings;
+    std::vector<GLenum> colorAttachmentsToActivate;
 };
 
 struct Renderpass
 {
-    const char *name;
-    MeshTag acceptedMeshTags;
-
-    std::vector<Attachment> ownedAttachments;
-    std::vector<RequestedAttachment> requestedAttachments;
-
-    std::vector<Shader*> subpasses;
-
-    RenderpassSettings settings;
+    const char* name;
+    PassSettings settings;
 
     unsigned int fbo;
-    bool isOutputPass;
+    std::vector<Subpass*> subpasses;
+    std::vector<GLenum> colorAttachmentIndices;
+    std::vector<RenderpassAttachment*> attachments;
+    RenderpassAttachment* outputAttachment = nullptr;
 
-    Renderpass(const char* name, MeshTag tags, RenderpassSettings settings = RenderpassSettings::Default()) : name(name), acceptedMeshTags(tags), isOutputPass(false), settings(settings) {}
-    static Renderpass OutputPass(const char* outputAttachmentName);
 
-    inline Renderpass& AddAttachment(Attachment attachment) { ownedAttachments.push_back(attachment); return *this; }
-    inline Renderpass& RequestAttachmentFromPipeline(RequestedAttachment attachment) { requestedAttachments.push_back(attachment); return *this; }
-    inline Renderpass& AddSubpass(Shader* subpass) { subpasses.push_back(subpass); return *this; }
+    Renderpass(const char* name, PassSettings settings) : name(name), settings(settings), outputAttachment(nullptr), fbo(GL_INVALID_VALUE) {}
 
-    std::vector<const char*> OwnedAttachmentNames();
+    Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
+    Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<RenderpassAttachment*> attachments, SubpassAttachment::AttachType typeForAllAttachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
+
+    RenderpassAttachment& AddAttachment(const char* name, AttachmentFormat format);
+    RenderpassAttachment& GetAttachment(const char* name);
+
+    RenderpassAttachment& AddOutputAttachment();
 };
 
 struct RenderPipeline
 {
-    std::vector<Renderpass> passes;
-    std::unordered_map<const char*, Attachment*> attachments;
+    std::vector<Renderpass*> passes;
+
+    Renderpass& AddPass(const char* name, PassSettings passSettings = PassSettings::DefaultRenderpassSettings());
+    Renderpass& AddOutputPass();
+
+    // Configurues all attachment in the order they are attached to the pipeline
+    bool ConfigureAttachments();
+    bool ConfigureAttachments(Renderpass& pass);
 
     // TODO: a horrible place to put this
     int dummyTextureUnit;
-
-    bool InitializePipeline();
-    Attachment* RetrieveAttachment(const char* attachmentName);
+    static RenderpassAttachment& DummyAttachment();
 };

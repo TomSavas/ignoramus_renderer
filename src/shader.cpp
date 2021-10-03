@@ -288,14 +288,14 @@ void Shader::AddDummyForUnboundTextures(int dummyTextureUnit)
         {
             if (isTexture)
             {
-                LOG_WARN("Unbound tex found: %s. Binding dummy texture.", name);
+                //LOG_WARN("Unbound tex found: %s. Binding dummy texture.", name);
                 // Doesn't need activating, we're always keeping our dummy texture unit active
                 SetUniform(name, dummyTextureUnit);
             }
             else if (isCubemap)
             {
                 // TODO
-                LOG_WARN("Unbound cubemap found: %s. Binding dummy cubemap.", name);
+                //LOG_WARN("Unbound cubemap found: %s. Binding dummy cubemap.", name);
                 assert(false);
             }
         }

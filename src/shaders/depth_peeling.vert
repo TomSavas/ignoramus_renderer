@@ -17,9 +17,11 @@ layout (std140) uniform ModelParams
 };
 
 out vec4 FragPos;
+//out vec2 uv;
 
 void main()
 {
     FragPos = projection * view * model * vec4(vert_pos, 1.f);
+    //uv = FragPos.xy / FragPos.w;
     gl_Position = FragPos;
 }

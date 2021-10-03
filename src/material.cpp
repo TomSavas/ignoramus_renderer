@@ -21,6 +21,5 @@ void Material::UpdateData()
 
 void Material::Bind()
 {
-    glBindBuffer(GL_UNIFORM_BUFFER, nonResourceData.uboId);
     glBindBufferBase(GL_UNIFORM_BUFFER, Shader::materialParamBindingPoint, nonResourceData.uboId);
 }
