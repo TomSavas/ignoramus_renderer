@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include <vector>
 #include <algorithm>
@@ -17,6 +18,7 @@
 
 #include "texture_pool.h"
 
+static GLuint timeQuery;
 DeferredTest::DeferredTest()
 {
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
@@ -63,7 +65,6 @@ DeferredTest::DeferredTest()
 
         PassSettings peelSettings = PassSettings::DefaultSettings();
         peelSettings.enable = { GL_DEPTH_TEST };
-        //peelSettings.enable = { GL_DEPTH_TEST, GL_CULL_FACE };
         peelSettings.clearColor = glm::vec4(0.f, 0.f, 0.f, 0.f);
 
         bool evenPeel = i % 2 == 0;
@@ -160,6 +161,8 @@ DeferredTest::DeferredTest()
     // TODO: potentially have more ubos for model params, so that we're not making unnecessary data uploads to the gpu
     glGenBuffers(1, &ubo);
     glBindBufferBase(GL_UNIFORM_BUFFER, Shader::modelParamBindingPoint, ubo);
+
+    glGenQueries(1, &timeQuery);
 }
 
 void DeferredTest::Render()
@@ -175,12 +178,18 @@ void DeferredTest::Render()
     scene.BindCameraParams();
     scene.BindLighting();
 
+    float pipelineCpuDurationMs = 0.f;
+    float pipelineGpuDurationMs = 0.f;
+
     static PassSettings previousSettings = PassSettings::DefaultSettings();
     for (int i = 0; i < pipeline.passes.size(); i++)
     {
         int activatedTextureCount = 0;
         ASSERT(pipeline.passes[i] != nullptr);
         Renderpass& renderpass = *pipeline.passes[i];
+
+        float renderpassCpuDurationMs = 0.f;
+        float renderpassGpuDurationMs = 0.f;
 
         glBindFramebuffer(GL_FRAMEBUFFER, renderpass.fbo);
 
@@ -220,6 +229,9 @@ void DeferredTest::Render()
             {
                 continue;
             }
+
+            clock_t subpassStartTime = clock();
+            glBeginQuery(GL_TIME_ELAPSED, timeQuery);
 
             subpass.shader->Use();
 
@@ -297,6 +309,31 @@ void DeferredTest::Render()
                 // Shader dictates what textures it needs, the model provides them
                 meshWithMaterial.mesh.Render(*subpass.shader);
             }
+
+            clock_t subpassEndTime = clock();
+            clock_t subpassCpuDuration = subpassEndTime - subpassStartTime;
+            float subpassCpuDurationMs = subpassCpuDuration * 1000.f / CLOCKS_PER_SEC;
+            subpass.perfData.cpu.AddFrametime(subpassCpuDurationMs);
+            renderpassCpuDurationMs += subpassCpuDurationMs;
+
+            glEndQuery(GL_TIME_ELAPSED);
+            bool queryDone = false;
+            while (!queryDone) 
+            {
+                glGetQueryObjectiv(timeQuery, GL_QUERY_RESULT_AVAILABLE, (int*)&queryDone);
+            }
+            long subpassGpuDurationNs;
+            glGetQueryObjecti64v(timeQuery, GL_QUERY_RESULT, &subpassGpuDurationNs);
+            double subpassGpuDurationMs = (double)subpassGpuDurationNs / 1000000.0;
+            renderpassGpuDurationMs += subpassGpuDurationMs;
+            subpass.perfData.gpu.AddFrametime(subpassGpuDurationMs);
         }
+        renderpass.perfData.cpu.AddFrametime(renderpassCpuDurationMs);
+        renderpass.perfData.gpu.AddFrametime(renderpassGpuDurationMs);
+
+        pipelineCpuDurationMs += renderpassCpuDurationMs;
+        pipelineGpuDurationMs += renderpassGpuDurationMs;
     }
+    pipeline.perfData.cpu.AddFrametime(pipelineCpuDurationMs);
+    pipeline.perfData.gpu.AddFrametime(pipelineGpuDurationMs);
 }

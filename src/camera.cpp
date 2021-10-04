@@ -8,7 +8,7 @@
 Camera::Camera(float verticalFOV,
         float aspectRatio)
     : verticalFOV(verticalFOV), aspectRatio(aspectRatio),
-      nearClippingPlane(0.1f), farClippingPlane(100000.f)
+      nearClippingPlane(1.0f), farClippingPlane(100000.f)
 {
     projection = glm::perspective(glm::radians(verticalFOV), aspectRatio, nearClippingPlane, farClippingPlane);
     //projection = glm::ortho(0.f, 1920.f, 0.f, 1080.f, -1.f, farClippingPlane);

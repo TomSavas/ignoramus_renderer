@@ -2,6 +2,7 @@
 #include <unordered_map>
 
 #include "mesh.h"
+#include "perf_data.h"
 
 enum class AttachmentFormat
 {
@@ -80,6 +81,8 @@ struct Subpass
     std::vector<SubpassAttachment> attachments;
     PassSettings settings;
     std::vector<GLenum> colorAttachmentsToActivate;
+
+    PerfData perfData;
 };
 
 struct Renderpass
@@ -93,6 +96,7 @@ struct Renderpass
     std::vector<RenderpassAttachment*> attachments;
     RenderpassAttachment* outputAttachment = nullptr;
 
+    PerfData perfData;
 
     Renderpass(const char* name, PassSettings settings) : name(name), settings(settings), outputAttachment(nullptr), fbo(GL_INVALID_VALUE) {}
 
@@ -108,6 +112,7 @@ struct Renderpass
 struct RenderPipeline
 {
     std::vector<Renderpass*> passes;
+    PerfData perfData;
 
     Renderpass& AddPass(const char* name, PassSettings passSettings = PassSettings::DefaultRenderpassSettings());
     Renderpass& AddOutputPass();

@@ -164,6 +164,47 @@ void ShowSettings(DeferredTest& test, Scene& scene)
     ImGui::End();
 }
 
+void PerfWidget(PerfData& perfData)
+{
+    ImGui::Text("Lifetime frametimes"); // TODO: center
+    ImGui::Text("CPU Min: %.3fms Max: %.3fms Avg: %.3fms", perfData.cpu.lifetimeMinFrametime, perfData.cpu.lifetimeMaxFrametime, perfData.cpu.lifetimeAvgFrametime);
+    ImGui::Text("GPU Min: %.3fms Max: %.3fms Avg: %.3fms", perfData.gpu.lifetimeMinFrametime, perfData.gpu.lifetimeMaxFrametime, perfData.gpu.lifetimeAvgFrametime);
+    
+    ImGui::Separator();
+    ImGui::Text("Last 512 frametimes"); // TODO: center
+    ImGui::Text("CPU Min: %.3fms Max: %.3fms Avg: %.3fms", perfData.cpu.minFrametime, perfData.cpu.maxFrametime, perfData.cpu.avgFrametime);
+    ImGui::Text("GPU Min: %.3fms Max: %.3fms Avg: %.3fms", perfData.gpu.minFrametime, perfData.gpu.maxFrametime, perfData.gpu.avgFrametime);
+
+    ImGui::PlotLines("CPU Frametime", perfData.cpu.data, perfData.cpu.filledBufferOnce ? PERF_DATAPOINT_COUNT : perfData.cpu.lifetimeDatapointCount, perfData.cpu.latestIndex, NULL, perfData.cpu.lifetimeMinFrametime, perfData.cpu.lifetimeMaxFrametime, ImVec2(0, 70.f));
+    ImGui::PlotLines("GPU Frametime", perfData.gpu.data, perfData.gpu.filledBufferOnce ? PERF_DATAPOINT_COUNT : perfData.gpu.lifetimeDatapointCount, perfData.gpu.latestIndex, NULL, perfData.gpu.lifetimeMinFrametime, perfData.gpu.lifetimeMaxFrametime, ImVec2(0, 70.f));
+}
+
+void ShowPerfMetrics(DeferredTest& test)
+{
+    PerfWidget(test.pipeline.perfData);
+    ImGui::Text("Frames: %d", test.pipeline.perfData.cpu.lifetimeDatapointCount);
+    ImGui::Separator();
+    ImGui::Separator();
+
+    for (auto* renderpass : test.pipeline.passes)
+    {
+        if (ImGui::TreeNodeEx(renderpass->name, ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            PerfWidget(renderpass->perfData);
+
+            for (auto* subpass : renderpass->subpasses)
+            {
+                if (ImGui::TreeNodeEx(subpass->name))
+                {
+                    PerfWidget(subpass->perfData);
+                    ImGui::TreePop();
+                }
+            }
+            ImGui::TreePop();
+        }
+    }
+}
+
 int main(void) 
 {
     if (!glfwInit())
@@ -218,8 +259,9 @@ int main(void)
         ImGuiWrapper::PreRender();
         test.camera.Update(window);
 
-        ShowFPS(test);
+        //ShowFPS(test);
         ShowSettings(test, test.scene);
+        ShowPerfMetrics(test);
 
         test.Render();
         ImGuiWrapper::Render();

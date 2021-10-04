@@ -6,7 +6,7 @@ set(EXEC ${PROJECT})
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O1 -DDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O2 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp")
