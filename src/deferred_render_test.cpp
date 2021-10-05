@@ -153,8 +153,6 @@ DeferredTest::DeferredTest()
         mesh.transform = Transform(glm::vec3(-500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(750.f, 750.f, 750.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, transparentMat });
     }
-    LOG_DEBUG("transparent mat size: %d", transparentMat->nonResourceData.size);
-    LOG_ERROR("Transparent mat is messed up when using vec3 for color!");
 
     scene.meshes[SCREEN_QUAD].push_back({ Mesh::ScreenQuadMesh(), new EmptyMaterial() });
 

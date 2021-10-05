@@ -8,10 +8,7 @@ uniform sampler2D greater_depth;
 
 layout (std140) uniform MaterialParams
 {
-    float opacity;
-    float r;
-    float g;
-    float b;
+    vec4 tintAndOpacity;
 };
 
 float visibleDepth(float depth)
@@ -33,7 +30,5 @@ void main()
     if (z <= minDepth)
         discard;
 
-    //float diff = abs(z - minDepth);
-    //FragColor = vec4(vec3(diff * 1000000000), 1.f);
-    FragColor = vec4(r, g, b, opacity);
+    FragColor = tintAndOpacity;
 }

@@ -46,14 +46,11 @@ struct TransparentMaterial : public Material, public Identifiable<TransparentMat
 {
     struct
     {
-        float opacity;
-        float r;
-        float g;
-        float b;
-        //glm::vec3 tint;
+        glm::vec4 tintAndOpacity;
     } resourceData;
 
-    TransparentMaterial(float r, float g, float b, float opacity) : Material(sizeof(resourceData), Id(), &resourceData), resourceData({opacity, r, g, b}) {}
+    TransparentMaterial(float r, float g, float b, float opacity) : Material(sizeof(resourceData),
+            Id(), &resourceData), resourceData({glm::vec3(r, g, b, opacity)}) {}
 };
 
 struct OpaqueMaterial : public Material, public Identifiable<OpaqueMaterial>
