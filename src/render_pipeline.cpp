@@ -241,7 +241,7 @@ bool RenderPipeline::ConfigureAttachments(Renderpass& pass)
 
         if (attachment.format == AttachmentFormat::DEPTH)
         {
-            glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_INTENSITY);
+            glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
         }
     }
 
