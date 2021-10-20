@@ -21,24 +21,56 @@
 static GLuint timeQuery;
 DeferredTest::DeferredTest()
 {
+    Shader& quadTextureShader = shaders.AddShader("quad texture", 
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "texture.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    Shader& geometryShader = shaders.AddShader("geometry",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    Shader& deferredLightingShader = shaders.AddShader("deferred lighting", 
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "deferred_lighting.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    Shader& forwardTransparencyShader = shaders.AddShader("forward transparency",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "forward_transparency.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    Shader& depthPeelingShader = shaders.AddShader("depth peeling", 
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "depth_peeling.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
 
     // TODO: potentially nicer architectural solution would be to redo everything into a "description"..?
     Renderpass& deferredLightingPass = pipeline.AddPass("Deferred lighting pass");
-    deferredLightingPass.AddSubpass("Geometry subpass", new Shader("../src/shaders/g_buf.vert", "../src/shaders/g_buf.geom", "../src/shaders/g_buf.frag"), OPAQUE,
+    deferredLightingPass.AddSubpass("Geometry subpass", &geometryShader, OPAQUE,
         {
 #define G_BUF_DEPTH    "g_depth"
-            { &deferredLightingPass.AddAttachment(G_BUF_DEPTH,    AttachmentFormat::DEPTH),   SubpassAttachment::AS_DEPTH },
+            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_DEPTH,    AttachmentFormat::DEPTH),   SubpassAttachment::AS_DEPTH),
 #define G_BUF_POSITION "g_position"
-            { &deferredLightingPass.AddAttachment(G_BUF_POSITION, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR },
+            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_POSITION, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
 #define G_BUF_NORMAL   "g_normal"
-            { &deferredLightingPass.AddAttachment(G_BUF_NORMAL,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR },
+            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_NORMAL,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
 #define G_BUF_ALBEDO   "g_albedo"
-            { &deferredLightingPass.AddAttachment(G_BUF_ALBEDO,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR },
+            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_ALBEDO,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
 #define G_BUF_SPECULAR "g_specular"
-            { &deferredLightingPass.AddAttachment(G_BUF_SPECULAR, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR },
+            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_SPECULAR, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
         });
-    deferredLightingPass.AddSubpass("Composition-lighting subpass", new Shader("../src/shaders/deferred_lighting.vert", "../src/shaders/deferred_lighting.frag"), SCREEN_QUAD,
+    deferredLightingPass.AddSubpass("Composition-lighting subpass", &deferredLightingShader, SCREEN_QUAD,
         {
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
             SubpassAttachment(&deferredLightingPass.AddOutputAttachment(),         SubpassAttachment::AS_COLOR),
@@ -48,14 +80,14 @@ DeferredTest::DeferredTest()
             SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_SPECULAR), SubpassAttachment::AS_TEXTURE, "tex_specular"),
         });
 
-    // TODO
-    //Renderpass& forwardTransparencyPass;
+//#define DEPTH_PEELING_TRANSPARENCY
+#define UNSORTED_FORWARD_TRANSPARENCY
 
+#ifdef DEPTH_PEELING_TRANSPARENCY
+#define DEPTH_PASS_COUNT 6
     Renderpass& depthPeelingPass = pipeline.AddPass("Depth peeling pass");
     RenderpassAttachment& depthPeelingDepthA = depthPeelingPass.AddAttachment("depth_peel_depth_A", AttachmentFormat::DEPTH);
     RenderpassAttachment& depthPeelingDepthB = depthPeelingPass.AddAttachment("depth_peel_depth_B", AttachmentFormat::DEPTH);
-    //depthPeelingPass.RequestAttachmentFromPipeline("g_depth", SubpassAttachment::AS_BLIT, "depth_peel_depth_B"); // TODO
-#define DEPTH_PASS_COUNT 6
     for (int i = 0; i < DEPTH_PASS_COUNT; i++)
     {
         char* subpassName = new char[64];
@@ -68,31 +100,55 @@ DeferredTest::DeferredTest()
         peelSettings.clearColor = glm::vec4(0.f, 0.f, 0.f, 0.f);
 
         bool evenPeel = i % 2 == 0;
-        Subpass& subpass = depthPeelingPass.AddSubpass(subpassName, new Shader("../src/shaders/depth_peeling.vert", "../src/shaders/depth_peeling.frag"), TRANSPARENT,
+        Subpass& subpass = depthPeelingPass.AddSubpass(subpassName, &depthPeelingShader, TRANSPARENT,
             { 
-                SubpassAttachment(&depthPeelingPass.AddAttachment(outputBuffer, AttachmentFormat::FLOAT_4), SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&depthPeelingPass.AddAttachment(outputBuffer, AttachmentFormat::FLOAT_4), SubpassAttachment::AS_COLOR), // Not actually necessary, just for debug purposes
                 SubpassAttachment(evenPeel ? &depthPeelingDepthA : &depthPeelingDepthB,                     SubpassAttachment::AS_DEPTH),
                 SubpassAttachment(evenPeel ? &depthPeelingDepthB : &depthPeelingDepthA,                     SubpassAttachment::AS_TEXTURE, "greater_depth"),
             }, peelSettings);
     }
+#endif //DEPTH_PEELING_TRANSPARENCY
 
-    // TODO: factor out adding a dummy pass
-    //pipeline
-    //    .AddPass("Debug draw pass")
-    //    .AddSubpass("empty", new Shader("../src/shaders/texture.vert", "../src/shaders/texture.frag"), NONE, { SubpassAttachment(&pipeline.DummyAttachment(), SubpassAttachment::AS_COLOR) });
+#ifdef DUAL_DEPTH_PEELING_TRANSPARENCY
+#define DEPTH_PASS_COUNT 6
+#endif //DUAL_DEPTH_PEELING_TRANSPARENCY
 
-    //Renderpass& postProFxPass = pipeline.AddPass("Post processing fx pass");
-    //postProFxPass.AddSubpass("pixelation", new Shader("../src/shaders/texture.vert", "../src/shaders/pixelation.frag"), SCREEN_QUAD,
-    //    { 
-    //        SubpassAttachment(&postProFxPass.AddOutputAttachment(), SubpassAttachment::AS_COLOR),
-    //        // TEMP, should have "GetPreviousOutput" or something
-    //        SubpassAttachment(&deferredLightingPass.AddOutputAttachment(), SubpassAttachment::AS_TEXTURE, "tex") 
-    //    });
+    pipeline.AddOutputPass(quadTextureShader);
 
-    pipeline.AddOutputPass();
+#ifdef UNSORTED_FORWARD_TRANSPARENCY
+    PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
+    settings.ignoreClear = true;
+    settings.enable = { GL_BLEND, };
+    //settings.enable.push_back(GL_DEPTH_TEST);
+    settings.srcBlendFactor = GL_SRC_ALPHA;
+    settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+    Renderpass& forwardTransparencyRenderpass = pipeline.AddPass("Forward transparency pass", settings);
+    forwardTransparencyRenderpass.fbo = 0;
+
+    //Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subass",
+    //        new Shader("../src/shaders/forward_transparency.vert", "../src/shaders/forward_transparency.frag"), TRANSPARENT, {}, settings);
+
+    Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subass", &forwardTransparencyShader, TRANSPARENT, 
+            {
+                //SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_DEPTH),   SubpassAttachment::AS_DEPTH),
+                //SubpassAttachment(&forwardTransparencyRenderpass.AddAttachment("output", AttachmentFormat::FLOAT_4), SubpassAttachment::AS_COLOR),
+                //SubpassAttachment(&forwardTransparencyRenderpass.AddAttachment("depth",  AttachmentFormat::DEPTH),   SubpassAttachment::AS_DEPTH),
+            }, settings);
+#endif //UNSORTED_FORWARD_TRANSPARENCY
+
+
+#ifdef MESHKIN_OIT_FORWARD_TRANSPARENCY
+#endif //MESHKIN_OIT_FORWARD_TRANSPARENCY
+
+#ifdef BAVOIL_MYERS_OIT_FORWARD_TRANSPARENCY
+#endif //BAVOIL_MYERS_OIT_FORWARD_TRANSPARENCY
+
+#ifdef WEIGHTED_BLENDED_OIT_FORWARD_TRANSPARENCY
+#endif //WEIGHTED_BLENDED_OIT_FORWARD_TRANSPARENCY
+
+#ifdef DEPTH_PEELING_TRANSPARENCY
     // TEMP, compositing depth peels on top of our output. Should be done using a stencil. Would save on a lot of useless black drawing
     {
-        Shader* texShader = new Shader("../src/shaders/texture.vert", "../src/shaders/texture.frag");
         for (int i = DEPTH_PASS_COUNT-1; i >= 0; i--)
         {
             char* name = new char[64];
@@ -110,13 +166,14 @@ DeferredTest::DeferredTest()
             Renderpass& outputPass = pipeline.AddPass(name, settings);
             outputPass.fbo = 0;
 
-            Subpass& subpass = outputPass.AddSubpass(subpassName, texShader, SCREEN_QUAD,
+            Subpass& subpass = outputPass.AddSubpass(subpassName, &quadTextureShader, SCREEN_QUAD,
                 {
                     // Default framebuffer already has a color attachment, no need to add another one
                     SubpassAttachment(&depthPeelingPass.GetAttachment(layer), SubpassAttachment::AS_TEXTURE, "tex")
                 }, settings);
         }
     }
+#endif //DEPTH_PEELING_TRANSPARENCY
 
     assert(pipeline.ConfigureAttachments());
 
@@ -165,6 +222,8 @@ DeferredTest::DeferredTest()
 
 void DeferredTest::Render()
 {
+    shaders.ReloadChangedShaders();
+
     // A la syncing with the game thread
     scene.mainCameraParams.pos = camera.transform.pos;
     scene.mainCameraParams.view = camera.View();

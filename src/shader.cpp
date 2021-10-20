@@ -3,220 +3,284 @@
 #include <stdlib.h>
 #include <string.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <sys/inotify.h>
+#include <unistd.h>
+#include <unordered_set>
+#include <fcntl.h>
+#include <errno.h>
 
 #include "log.h"
 
 #include "shader.h"
 
-bool ReadFile(const char *filepath, char **fileContents, unsigned int &length)
+#define DEFAULT_SHADER "default"
+ShaderPool::ShaderPool()
+{
+    AddShader(DEFAULT_SHADER, 
+        ShaderDescriptor(
+            { 
+                //ShaderDescriptor::File(ShaderDescriptor::Type::VERTEX_SHADER, ""),
+                //ShaderDescriptor::File(ShaderDescriptor::Type::FRAGMENT_SHADER, ""),
+                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::Type::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "texture.frag", ShaderDescriptor::Type::FRAGMENT_SHADER),
+            }));
+
+    watchlist.inotifyFd = inotify_init();
+    fcntl(watchlist.inotifyFd, F_SETFL, fcntl(watchlist.inotifyFd, F_GETFL) | O_NONBLOCK);
+}
+
+ShaderPool::~ShaderPool()
+{
+    // TODO: delete all shaders/shaderPrograms
+    // TODO: close all watches
+    close(watchlist.inotifyFd);
+}
+
+Shader& ShaderPool::GetShader(const char* name)
+{
+    auto shader = shaders.find(name);
+    if (shader == shaders.end())
+    {
+        return GetShader(DEFAULT_SHADER);
+    }
+
+    return *shader->second;
+}
+
+const char* ReadFile(const char *filepath)
 {
     FILE *file = fopen(filepath, "rb");
-    
-    if (!file)
-        return false;
+    if (file == nullptr)
+    {
+        return nullptr;
+    }
 
     fseek (file, 0, SEEK_END);
-    length = ftell(file) + 1;
+    unsigned int length = ftell(file) + 1;
     fseek (file, 0, SEEK_SET);
+    char* fileContents = (char*) malloc(length);
+    if (fileContents != nullptr)
+    {
+        fread(fileContents, 1, length, file);
+        fileContents[length-1] = 0;
+    }
 
-    *fileContents = (char*) malloc(length);
-    if (!*fileContents)
-        return false;
-
-    fread(*fileContents, 1, length, file);
-    (*fileContents)[length-1] = 0;
     fclose(file);
 
+    return fileContents;
+}
+
+GLenum ToGlType(ShaderDescriptor::Type type)
+{
+    switch (type)
+    {
+        case ShaderDescriptor::COMPUTE_SHADER:
+            return GL_COMPUTE_SHADER;
+        case ShaderDescriptor::GEOMETRY_SHADER:
+            return GL_GEOMETRY_SHADER;
+        case ShaderDescriptor::VERTEX_SHADER:
+            return GL_VERTEX_SHADER;
+        case ShaderDescriptor::FRAGMENT_SHADER:
+            return GL_FRAGMENT_SHADER;
+        default:
+            LOG_ERROR(__func__, "Cannot convert shader tpye to GL type. Invalid type: %d", type);
+            return GL_FRAGMENT_SHADER;
+    }
+}
+
+bool CompileShader(const char* name, ShaderDescriptor& descriptor, Shader* shader)
+{
+    shader->descriptor = descriptor;
+    std::vector<unsigned int> shaderIds;
+    for (auto& file : descriptor.files)
+    {
+        // TODO: move to File, re-const descriptors
+        bool fromFile = strcmp(file.filepath, HARDCODED_SOURCE_FILEPATH) != 0;
+        if (fromFile)
+        {
+            // Safe, if fromFile this cannot be hardcoded -- this shader is being reloaded
+            if (file.source != nullptr)
+            {
+                free((char*) file.source);
+            }
+            // TODO: I think this is leaking somewhere...
+            file.source = ReadFile(file.filepath);
+        }
+
+        LOG_INFO("Shader", "Compiling \"%s\" for \"%s\"...", file.filepath, name);
+        unsigned int id = glCreateShader(ToGlType(file.type));
+        glShaderSource(id, 1, &file.source, NULL);
+        glCompileShader(id);
+
+        int compilationSucceeded = 0;
+        glGetShaderiv(id, GL_COMPILE_STATUS, &compilationSucceeded);
+        if (compilationSucceeded == 0)
+        {
+            char errorMsg[1024];
+            glGetShaderInfoLog(id, 1024, NULL, (GLchar*) &errorMsg);
+            LOG_ERROR("Shader", "Failed compiling \"%s\" for \"%s\":\n\t%s", file.filepath, name, errorMsg);
+
+            continue;
+        }
+
+        shaderIds.push_back(id);
+    }
+
+    unsigned int id = glCreateProgram();
+    for (unsigned int shaderId : shaderIds)
+    {
+        glAttachShader(id, shaderId);
+    }
+    glLinkProgram(id);
+    shader->id = id;
+
+    for (unsigned int shaderId : shaderIds)
+    {
+        glDeleteShader(shaderId);
+    }
+
+    int compilationSucceeded = 0;
+    glGetProgramiv(id, GL_LINK_STATUS, &compilationSucceeded);
+    if (compilationSucceeded == 0)
+    {
+        char errorMsg[1024];
+        glGetProgramInfoLog(id, 1024, NULL, (GLchar*) &errorMsg);
+        LOG_ERROR("Shader", "Failed linking \"%s\":\n\t", name, errorMsg);
+        glDeleteProgram(id);
+
+        return false;
+    }
+
+    LOG_INFO("Shader", "Successfully compiled \"%s\"", name);
+    shader->SetupUniformBlockBindings();
     return true;
 }
 
-Shader::Shader()
+void Watchlist::Add(Shader& shader)
 {
-    compilationSucceeded = false;
-    strcpy(compilationErrorMsg, "Shader not initialized");
+    for (auto file : shader.descriptor.files)
+    {
+        if (access(file.filepath, F_OK) != 0)
+        {
+            // Probably hardcoded shader source. Nothing to watch...
+            continue;
+        }
+
+        int wd;
+        auto existingWd = filenamesToWd.find(file.filepath);
+        if (existingWd != filenamesToWd.end())
+        {
+            wd = existingWd->second;
+        }
+        else
+        {
+            wd = inotify_add_watch(inotifyFd, file.filepath, IN_MODIFY);
+        }
+
+        LOG_INFO("Watchlist", "Adding \"%s\" to watchlist", file.filepath);
+        wdsToShaders[wd].insert(&shader);
+    }
 }
 
-Shader::Shader(const char *vsFilepath, const char *fsFilepath)
+void Watchlist::Remove(Shader& shader)
 {
-    unsigned int vsLength;
-    char *vsCode;
-    unsigned int fsLength;
-    char *fsCode;
-    if (!ReadFile(vsFilepath, &vsCode, vsLength) || !ReadFile(fsFilepath, &fsCode, fsLength))
+    for (auto file : shader.descriptor.files)
     {
-        compilationSucceeded = false;
-        strcpy(compilationErrorMsg, "Failed reading shaders from files");
+        int wd = filenamesToWd[file.filepath];
+        wdsToShaders[wd].erase(&shader);
 
-        return;
+        if (wdsToShaders[wd].size() == 0)
+        {
+            LOG_INFO("Watchlist", "Watchlist for \"%s\" is empty. Clearing", file.filepath);
+
+            wdsToShaders.erase(wd);
+            filenamesToWd.erase(file.filepath);
+
+            inotify_rm_watch(inotifyFd, wd);
+        }
+    }
+}
+
+Shader& ShaderPool::AddShader(const char* name, ShaderDescriptor descriptor)
+{
+    Shader* shader = new Shader();
+    shader->name = name;
+    bool compiledSuccessfully = CompileShader(name, descriptor, shader);
+    if (!compiledSuccessfully)
+    {
+        *shader = GetShader(DEFAULT_SHADER);
     }
 
-    unsigned int vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShaderId, 1, &vsCode, NULL);
-    glCompileShader(vertexShaderId);
-    if (CheckCompileErrors(vertexShaderId, "VERTEX"))
+    auto existingShader = shaders.find(name);
+    if (existingShader == shaders.end())
     {
-        free(vsCode);
-        free(fsCode);
+        shaders[name] = shader;
+        if (!compiledSuccessfully)
+        {
+            LOG_ERROR("Shader", "Failed compiling \"%s\". Using default shader", name);
+        }
+        else
+        {
+            watchlist.Add(*shader);
+        }
 
-        glDeleteShader(vertexShaderId);
-        return;
+        return *shader;
     }
-
-    unsigned int fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShaderId, 1, &fsCode, NULL);
-    glCompileShader(fragmentShaderId);
-    if (CheckCompileErrors(fragmentShaderId, "FRAGMENT"))
-    {
-        free(vsCode);
-        free(fsCode);
-
-        glDeleteShader(vertexShaderId);
-        glDeleteShader(fragmentShaderId);
-        return;
-    }
-
-    shaderProgramId = glCreateProgram();
-    glAttachShader(shaderProgramId, vertexShaderId);
-    glAttachShader(shaderProgramId, fragmentShaderId);
-    glLinkProgram(shaderProgramId);
-
-    CheckCompileErrors(shaderProgramId, "PROGRAM");
-    free(vsCode);
-    free(fsCode);
-    glDeleteShader(vertexShaderId);
-    glDeleteShader(fragmentShaderId);
-
-    SetupUniformBlockBindings();
-
-    if (!compilationSucceeded)
-        printf("FAILED CREATING SHADER PROGRAM (%s, %s) :\n%s\n", vsFilepath, fsFilepath, compilationErrorMsg);
     else
-        printf("Shader compilation succeeded (%s, %s)\n", vsFilepath, fsFilepath);
+    {
+        if (compiledSuccessfully)
+        {
+            *existingShader->second = *shader;
+            LOG_INFO("Shader", "Replacing existing \"%s\" shader with a new one", name);
+        }
+        else
+        {
+            delete shader;
+            LOG_ERROR("Shader", "Failed compiling new version of \"%s\". Preserving the old version", name);
+        }
+
+        return *existingShader->second;
+    }
 }
 
-Shader::Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFilepath)
+void ShaderPool::ReloadChangedShaders()
 {
-    unsigned int vsLength;
-    char *vsCode;
-    unsigned int gsLength;
-    char *gsCode;
-    unsigned int fsLength;
-    char *fsCode;
-    if (!ReadFile(vsFilepath, &vsCode, vsLength) || !ReadFile(gsFilepath, &gsCode, gsLength) || !ReadFile(fsFilepath, &fsCode, fsLength))
-    {
-        compilationSucceeded = false;
-        strcpy(compilationErrorMsg, "Failed reading shaders from files");
+    inotify_event events[32];
+    int bytesRead = read(watchlist.inotifyFd, events, sizeof(events));
+    int eventsRead = bytesRead / sizeof(inotify_event);
 
-        return;
+    if (bytesRead == -1)
+    {
+        // Expected behaviour when O_NONBLOCK is set
+        if (errno != EAGAIN)
+        {
+            LOG_WARN("ShaderPool", "Failed reading inotify events: %d", errno);
+            return;
+        }
     }
 
-    unsigned int vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShaderId, 1, &vsCode, NULL);
-    glCompileShader(vertexShaderId);
-    if (CheckCompileErrors(vertexShaderId, "VERTEX"))
+    std::unordered_set<Shader*> shadersToUpdate;
+    for (int i = 0; i < eventsRead; i++)
     {
-        free(vsCode);
-        free(gsCode);
-        free(fsCode);
-
-        glDeleteShader(vertexShaderId);
-        return;
+        inotify_event event = events[i];
+        shadersToUpdate.insert(watchlist.wdsToShaders[event.wd].begin(), watchlist.wdsToShaders[event.wd].end());
     }
 
-    unsigned int geometryShaderId = glCreateShader(GL_GEOMETRY_SHADER);
-    glShaderSource(geometryShaderId, 1, &gsCode, NULL);
-    glCompileShader(geometryShaderId);
-    if (CheckCompileErrors(geometryShaderId, "GEOMETRY"))
+    for (auto* shader : shadersToUpdate)
     {
-        free(vsCode);
-        free(gsCode);
-        free(fsCode);
-
-        glDeleteShader(vertexShaderId);
-        glDeleteShader(geometryShaderId);
-        return;
+        AddShader(shader->name, shader->descriptor);
     }
-
-    unsigned int fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShaderId, 1, &fsCode, NULL);
-    glCompileShader(fragmentShaderId);
-    if (CheckCompileErrors(fragmentShaderId, "FRAGMENT"))
-    {
-        free(vsCode);
-        free(gsCode);
-        free(fsCode);
-
-        glDeleteShader(vertexShaderId);
-        glDeleteShader(geometryShaderId);
-        glDeleteShader(fragmentShaderId);
-        return;
-    }
-
-    shaderProgramId = glCreateProgram();
-    glAttachShader(shaderProgramId, vertexShaderId);
-    glAttachShader(shaderProgramId, geometryShaderId);
-    glAttachShader(shaderProgramId, fragmentShaderId);
-    glLinkProgram(shaderProgramId);
-
-    CheckCompileErrors(shaderProgramId, "PROGRAM");
-    free(vsCode);
-    free(gsCode);
-    free(fsCode);
-    glDeleteShader(vertexShaderId);
-    glDeleteShader(geometryShaderId);
-    glDeleteShader(fragmentShaderId);
-
-    SetupUniformBlockBindings();
-
-    if (!compilationSucceeded)
-        printf("FAILED CREATING SHADER PROGRAM (%s, %s, %s) :\n%s\n", vsFilepath, gsFilepath, fsFilepath, compilationErrorMsg);
-    else
-        printf("Shader compilation succeeded (%s, %s, %s)\n", vsFilepath, gsFilepath, fsFilepath);
-}
-
-Shader::~Shader()
-{
-
 }
 
 void Shader::Use()
 {
-    glUseProgram(shaderProgramId);
+    glUseProgram(id);
     boundUniforms.clear();
-}
-
-bool Shader::CheckCompileErrors(unsigned int shaderId, const char *shaderType)
-{
-    if (strcmp(shaderType, "VERTEX") == 0 || strcmp(shaderType, "FRAGMENT") == 0 || strcmp(shaderType, "GEOMETRY") == 0)
-    {
-        glGetShaderiv(shaderId, GL_COMPILE_STATUS, (GLint*) &compilationSucceeded);
-        if(!compilationSucceeded)
-            glGetShaderInfoLog(shaderId, 1024, NULL, (GLchar*) &compilationErrorMsg);
-    }
-    else if (strcmp(shaderType, "PROGRAM") == 0)
-    {
-        glGetProgramiv(shaderId, GL_LINK_STATUS, (GLint*) &compilationSucceeded);
-        if(!compilationSucceeded)
-            glGetProgramInfoLog(shaderId, 1024, NULL, (GLchar*) &compilationErrorMsg);
-    }
-    else
-    {
-        compilationSucceeded = false;
-    }
-
-    if (!compilationSucceeded)
-    {
-        strcat(&compilationErrorMsg[0], "[");
-        strcat(&compilationErrorMsg[0], shaderType);
-        strcat(&compilationErrorMsg[0], "]\n");
-    }
-
-    return !compilationSucceeded;
 }
 
 GLint Shader::GetUniformLocation(const char* name)
 {
-    GLint location = glGetUniformLocation(shaderProgramId, name);
+    GLint location = glGetUniformLocation(id, name);
     assert(location != GL_INVALID_VALUE);
     boundUniforms.insert(std::string(name));
 
@@ -265,7 +329,7 @@ void Shader::SetUniform(const char *name, glm::mat3 data)
 
 void Shader::SetUniform(const char *name, glm::mat4 data)
 {
-    //glUniformMatrix4fv(glGetUniformLocation(shaderProgramId, name), 1, GL_FALSE, &data[0][0]); 
+    //glUniformMatrix4fv(glGetUniformLocation(id, name), 1, GL_FALSE, &data[0][0]); 
     glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(data)); 
 }
 
@@ -276,10 +340,10 @@ void Shader::AddDummyForUnboundTextures(int dummyTextureUnit)
     char name[128];
 
     int count = 0;
-    glGetProgramiv(shaderProgramId, GL_ACTIVE_UNIFORMS, &count);
+    glGetProgramiv(id, GL_ACTIVE_UNIFORMS, &count);
     for (int i = 0; i < count; i++)
     {
-        glGetActiveUniform(shaderProgramId, i, sizeof(name), &unused, &unused, &type, name);
+        glGetActiveUniform(id, i, sizeof(name), &unused, &unused, &type, name);
 
         // Definitely not exhaustive...
         bool isTexture = type == GL_SAMPLER_1D || type == GL_SAMPLER_2D || type == GL_SAMPLER_3D;
@@ -310,10 +374,10 @@ void Shader::ReportUnboundUniforms()
     int count = 0;
     GLenum type;
     char name[128];
-    glGetProgramiv(shaderProgramId, GL_ACTIVE_UNIFORMS, &count);
+    glGetProgramiv(id, GL_ACTIVE_UNIFORMS, &count);
     for (int i = 0; i < count; i++)
     {
-        glGetActiveUniform(shaderProgramId, (GLuint)i, 128, &unused, &unused, &type, name);
+        glGetActiveUniform(id, (GLuint)i, 128, &unused, &unused, &type, name);
 
         if (boundUniforms.find(std::string(name)) == boundUniforms.end())
         {

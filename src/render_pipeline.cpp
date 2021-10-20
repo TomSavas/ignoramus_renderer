@@ -143,7 +143,7 @@ Renderpass& RenderPipeline::AddPass(const char* name, PassSettings passSettings)
     return *pass;
 }
 
-Renderpass& RenderPipeline::AddOutputPass()
+Renderpass& RenderPipeline::AddOutputPass(Shader& screenQuadShader)
 {
     Renderpass& outputPass = AddPass("output", PassSettings::DefaultOutputRenderpassSettings());
     outputPass.fbo = 0;
@@ -157,7 +157,7 @@ Renderpass& RenderPipeline::AddOutputPass()
     }
     ASSERT(previousValidOutputAttachment != nullptr);
 
-    Subpass& subpass = outputPass.AddSubpass("output subpass", new Shader("../src/shaders/texture.vert", "../src/shaders/texture.frag"), SCREEN_QUAD,
+    Subpass& subpass = outputPass.AddSubpass("output subpass", &screenQuadShader, SCREEN_QUAD,
         {
             // Default framebuffer already has a color attachment, no need to add another one
             SubpassAttachment(previousValidOutputAttachment, SubpassAttachment::AS_TEXTURE, "tex")

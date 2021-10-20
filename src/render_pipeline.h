@@ -115,7 +115,7 @@ struct RenderPipeline
     PerfData perfData;
 
     Renderpass& AddPass(const char* name, PassSettings passSettings = PassSettings::DefaultRenderpassSettings());
-    Renderpass& AddOutputPass();
+    Renderpass& AddOutputPass(Shader& screenQuadShader);
 
     // Configurues all attachment in the order they are attached to the pipeline
     bool ConfigureAttachments();

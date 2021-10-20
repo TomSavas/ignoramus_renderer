@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 #include <string.h>
+#include <vector>
 
 #include <GL/glew.h>
 
@@ -12,11 +13,53 @@
 
 #include "texture.h"
 
+#ifdef DEBUG
+#define SHADER_PATH "../src/shaders/"
+#else
+#define SHADER_PATH "./shaders/"
+#endif
+
+struct ShaderDescriptor
+{
+    enum Type
+    {
+        COMPUTE_SHADER = 0,
+        GEOMETRY_SHADER,
+        VERTEX_SHADER,
+        FRAGMENT_SHADER,
+
+        SHADER_TYPE_COUNT
+    };
+
+    struct File
+    {
+        const char* filepath;
+        Type type;
+        const char* source;
+
+        File(const char* filepath, Type type) : filepath(filepath), type(type), source(nullptr) {}
+#define HARDCODED_SOURCE_FILEPATH "hardcoded"
+        File(Type type, const char* source) : filepath(HARDCODED_SOURCE_FILEPATH), type(type), source(source) {}
+    };
+
+    std::vector<File> files;
+    ShaderDescriptor(std::vector<File> files = {}) : files(files) {}
+};
+
 class Shader
 {
+friend class ShaderPool;
+
+private:
+    Shader() {}
+
 public:
     // TODO: in the future shaders will be able to accept multiple materials
     unsigned int acceptedMaterialId;
+
+    const char* name;
+    ShaderDescriptor descriptor;
+    unsigned int id;
 
     // TODO: maybe autoincrement on enums is nice?
     /*
@@ -37,39 +80,29 @@ public:
 
     void SetupUniformBlockBindings()
     {
-        unsigned int sceneParamUniformBlockIndex = glGetUniformBlockIndex(shaderProgramId, "SceneParams");
+        unsigned int sceneParamUniformBlockIndex = glGetUniformBlockIndex(id, "SceneParams");
         if (sceneParamUniformBlockIndex != GL_INVALID_INDEX)
-            glUniformBlockBinding(shaderProgramId, sceneParamUniformBlockIndex, sceneParamBindingPoint);
+            glUniformBlockBinding(id, sceneParamUniformBlockIndex, sceneParamBindingPoint);
 
-        unsigned int cameraParamUniformBlockIndex = glGetUniformBlockIndex(shaderProgramId, "CameraParams");
+        unsigned int cameraParamUniformBlockIndex = glGetUniformBlockIndex(id, "CameraParams");
         if (cameraParamUniformBlockIndex != GL_INVALID_INDEX)
-            glUniformBlockBinding(shaderProgramId, cameraParamUniformBlockIndex, cameraParamBindingPoint);
+            glUniformBlockBinding(id, cameraParamUniformBlockIndex, cameraParamBindingPoint);
 
-        unsigned int lightingUniformBlockIndex = glGetUniformBlockIndex(shaderProgramId, "Lighting");
+        unsigned int lightingUniformBlockIndex = glGetUniformBlockIndex(id, "Lighting");
         if (lightingUniformBlockIndex != GL_INVALID_INDEX)
-            glUniformBlockBinding(shaderProgramId, lightingUniformBlockIndex, lightingBindingPoint);
+            glUniformBlockBinding(id, lightingUniformBlockIndex, lightingBindingPoint);
 
-        unsigned int materialParamUniformBlockIndex = glGetUniformBlockIndex(shaderProgramId, "MaterialParams");
+        unsigned int materialParamUniformBlockIndex = glGetUniformBlockIndex(id, "MaterialParams");
         if (materialParamUniformBlockIndex != GL_INVALID_INDEX)
-            glUniformBlockBinding(shaderProgramId, materialParamUniformBlockIndex, materialParamBindingPoint);
+            glUniformBlockBinding(id, materialParamUniformBlockIndex, materialParamBindingPoint);
 
-        unsigned int modelParamUniformBlockIndex = glGetUniformBlockIndex(shaderProgramId, "ModelParams");
+        unsigned int modelParamUniformBlockIndex = glGetUniformBlockIndex(id, "ModelParams");
         if (modelParamUniformBlockIndex != GL_INVALID_INDEX)
-            glUniformBlockBinding(shaderProgramId, modelParamUniformBlockIndex, modelParamBindingPoint);
+            glUniformBlockBinding(id, modelParamUniformBlockIndex, modelParamBindingPoint);
     }
-
-    unsigned int shaderProgramId;
-    bool compilationSucceeded;
-    char compilationErrorMsg[1024];
 
     // Yes mixing and matching is a pain in the ass, but so is calculating a hash of c style string
     std::unordered_set<std::string> boundUniforms;
-    const char* name;
-
-    Shader();
-    Shader(const char *vsFilepath, const char *fsFilepath);
-    Shader(const char *vsFilepath, const char *gsFilepath, const char *fsFilepath);
-    ~Shader();
 
     void Use();
 
@@ -86,7 +119,29 @@ public:
 
     void AddDummyForUnboundTextures(int dummyTextureUnit);
     void ReportUnboundUniforms();
+};
 
-private:
-    bool CheckCompileErrors(unsigned int shaderId, const char *shaderType);
+struct Watchlist
+{
+    int inotifyFd;
+    std::unordered_map<int, std::unordered_set<Shader*>> wdsToShaders;
+    std::unordered_map<const char*, int> filenamesToWd;
+
+    void Add(Shader& shader);
+    void Remove(Shader& shader);
+};
+
+struct ShaderPool
+{
+    ShaderPool();
+    ~ShaderPool();
+
+    Watchlist watchlist;
+    std::unordered_map<const char*, Shader*> shaders;
+
+    Shader& GetShader(const char* name);
+    //Shader& AddShader(const char* name, ShaderDescriptor& descriptor);
+    Shader& AddShader(const char* name, ShaderDescriptor descriptor);
+
+    void ReloadChangedShaders();
 };

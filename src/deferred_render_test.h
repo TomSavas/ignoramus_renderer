@@ -16,6 +16,7 @@ struct DeferredTest
 
     Scene scene;
     RenderPipeline pipeline;
+    ShaderPool shaders;
 
     // Really bad place to keep this. Will do for now though
     unsigned int ubo;
