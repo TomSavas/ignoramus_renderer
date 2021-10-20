@@ -19,7 +19,7 @@ GLenum ToGLInternalFormat(AttachmentFormat format)
         case AttachmentFormat::DEPTH_STENCIL:
             return GL_DEPTH24_STENCIL8;
         default:
-            LOG_ERROR("Cannot convert AttachmentFormat to GL internal format. Invalid format: %d", format);
+            LOG_ERROR(__func__, "Cannot convert AttachmentFormat to GL internal format. Invalid format: %d", format);
             return GL_RGBA32F;
     }
 }
@@ -39,7 +39,7 @@ GLenum ToGLFormat(AttachmentFormat format)
         case AttachmentFormat::DEPTH_STENCIL:
             return GL_DEPTH_STENCIL;
         default:
-            LOG_ERROR("Cannot convert AttachmentFormat to GL format. Invalid format: %d", format);
+            LOG_ERROR(__func__, "Cannot convert AttachmentFormat to GL format. Invalid format: %d", format);
             return GL_RGBA;
     }
 }
@@ -56,7 +56,7 @@ GLenum ToGLType(AttachmentFormat format)
         case AttachmentFormat::DEPTH_STENCIL:
             return GL_UNSIGNED_INT_24_8;
         default:
-            LOG_ERROR("Cannot convert AttachmentFormat to GL type. Invalid format: %d", format);
+            LOG_ERROR(__func__, "Cannot convert AttachmentFormat to GL type. Invalid format: %d", format);
             return GL_FLOAT;
     }
 }
@@ -173,7 +173,7 @@ bool RenderPipeline::ConfigureAttachments()
         int maxTexUnits = 80;
         glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxTexUnits);
         dummyTextureUnit = maxTexUnits - 1;
-        LOG_INFO("Max texture units: %d. Using texture unit #%d for dummy texture." , maxTexUnits, dummyTextureUnit);
+        LOG_INFO("Render pipeline", "Max texture units: %d. Using texture unit #%d for dummy texture." , maxTexUnits, dummyTextureUnit);
 
         Texture dummyTexture("../assets/textures/dummy_black.png", true);
         dummyTexture.Activate(GL_TEXTURE0 + dummyTextureUnit);
@@ -265,7 +265,7 @@ bool RenderPipeline::ConfigureAttachments(Renderpass& pass)
     GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
     {
-        LOG_ERROR("%s incomplete! Reason: %0x", pass.name, fboStatus);
+        LOG_ERROR("Render pipeline", "%s incomplete! Reason: %0x", pass.name, fboStatus);
         FORCE_BREAK;
         return false;
     }
@@ -326,7 +326,7 @@ RenderpassAttachment& Renderpass::GetAttachment(const char* attachmentName)
             return *attachment;
     }
 
-    LOG_ERROR("No attachment with name %s was found in renderpass %s. Providing dummy attachment", attachmentName, name);
+    LOG_ERROR("Render pipeline", "No attachment with name %s was found in renderpass %s. Providing dummy attachment", attachmentName, name);
     return RenderPipeline::DummyAttachment();
 }
 

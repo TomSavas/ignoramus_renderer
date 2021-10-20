@@ -4,7 +4,7 @@
 #include <time.h>
 #include <stdarg.h>
 
-inline void log(const char* tag, FILE* stream, const char* fmt, ...)
+inline void log(const char* level, const char* tag, FILE* stream, const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -15,22 +15,20 @@ inline void log(const char* tag, FILE* stream, const char* fmt, ...)
     char buf[16];
     strftime(buf, 16, "%T", gmtime(&timespec.tv_sec));
 
-    fprintf(stream, "[%s.%09ld] [%s]: ", buf, timespec.tv_nsec, tag);
+    fprintf(stream, "[%s.%09ld] [%s][%s]: ", buf, timespec.tv_nsec, level, tag);
     vfprintf(stream, fmt, args);
     fprintf(stream, "\n");
 
     va_end(args);
 }
 
-#define LOG_TAG(tag, stream, ...) log(#tag, stream, __VA_ARGS__)
-
-#define LOG_INFO(...)       LOG_TAG(INFO,  stderr, __VA_ARGS__)
-#define LOG_WARN(...)       LOG_TAG(WARN,  stderr, __VA_ARGS__)
-#define LOG_ERROR(...)      LOG_TAG(ERROR, stderr, __VA_ARGS__)
+#define LOG_INFO(tag, ...)      log("INFO",  tag, stderr, __VA_ARGS__)
+#define LOG_WARN(tag, ...)      log("WARN",  tag, stderr, __VA_ARGS__)
+#define LOG_ERROR(tag, ...)     log("ERROR", tag, stderr, __VA_ARGS__)
 #ifdef DEBUG
-    #define LOG_DEBUG(...)  LOG_TAG(DEBUG, stdout, __VA_ARGS__)
+    #define LOG_DEBUG(tag, ...) log("DEBUG", tag, stdout, __VA_ARGS__)
 #else
-    #define LOG_DEBUG(...)
+    #define LOG_DEBUG(tag, ...)
 #endif
 
 #include <assert.h>

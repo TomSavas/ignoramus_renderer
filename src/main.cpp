@@ -27,10 +27,9 @@ MessageCallback(GLenum source,
         const GLchar* message,
         const void* userParam)
 {
-    LOG_TAG(OGL, stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s",
+    LOG_ERROR("OpenGL", "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s",
             ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
             type, severity, message );
-    assert(type != GL_DEBUG_TYPE_ERROR);
 }
 
 void ShowFPS(DeferredTest &test)
