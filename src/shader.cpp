@@ -119,8 +119,6 @@ bool CompileShader(const char* name, ShaderDescriptor& descriptor, Shader* shade
             char errorMsg[1024];
             glGetShaderInfoLog(id, 1024, NULL, (GLchar*) &errorMsg);
             LOG_ERROR("Shader", "Failed compiling \"%s\" for \"%s\":\n\t%s", file.filepath, name, errorMsg);
-
-            continue;
         }
 
         shaderIds.push_back(id);
