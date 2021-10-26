@@ -10,6 +10,8 @@ GLenum ToGLInternalFormat(AttachmentFormat format)
     {
         case AttachmentFormat::FLOAT_1:
             return GL_R32F;
+        case AttachmentFormat::FLOAT_2:
+            return GL_RG32F;
         case AttachmentFormat::FLOAT_3:
             return GL_RGB16F;
         case AttachmentFormat::FLOAT_4:
@@ -30,6 +32,8 @@ GLenum ToGLFormat(AttachmentFormat format)
     {
         case AttachmentFormat::FLOAT_1:
             return GL_RED;
+        case AttachmentFormat::FLOAT_2:
+            return GL_RG;
         case AttachmentFormat::FLOAT_3:
             return GL_RGB;
         case AttachmentFormat::FLOAT_4:
@@ -49,6 +53,7 @@ GLenum ToGLType(AttachmentFormat format)
     switch (format)
     {
         case AttachmentFormat::FLOAT_1:
+        case AttachmentFormat::FLOAT_2:
         case AttachmentFormat::FLOAT_3:
         case AttachmentFormat::FLOAT_4:
         case AttachmentFormat::DEPTH:
@@ -80,6 +85,7 @@ void PassSettings::Apply()
     glCullFace(cullFace);
     glDepthMask(depthMask);
     glDepthFunc(depthFunc);
+    glBlendEquation(blendEquation);
     glBlendFunc(srcBlendFactor, dstBlendFactor);
     // missing color masking
 }
@@ -107,6 +113,7 @@ void PassSettings::Apply(PassSettings& previousSettings)
     for (int i = 0; i < 4; i++)
         settings.colorMask[i] = GL_TRUE;
     settings.clear = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT;
+    settings.blendEquation = GL_FUNC_ADD;
     settings.srcBlendFactor = GL_SRC_ALPHA;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
 
@@ -145,7 +152,7 @@ Renderpass& RenderPipeline::AddPass(const char* name, PassSettings passSettings)
 
 Renderpass& RenderPipeline::AddOutputPass(Shader& screenQuadShader)
 {
-    Renderpass& outputPass = AddPass("output", PassSettings::DefaultOutputRenderpassSettings());
+    Renderpass& outputPass = AddPass("Output pass", PassSettings::DefaultOutputRenderpassSettings());
     outputPass.fbo = 0;
 
     // We can probably change the SubpassAttachment to make this nicer. But for the time being we only need to access
@@ -245,20 +252,32 @@ bool RenderPipeline::ConfigureAttachments(Renderpass& pass)
         }
     }
 
-    pass.colorAttachmentIndices = std::vector<GLenum>();
+    pass.allColorAttachmentIndices = std::vector<GLenum>();
+    std::unordered_set<RenderpassAttachment*> registeredAttachments;
     for (auto* subpass : pass.subpasses)
     {
         for (auto& subpassAttachment : subpass->attachments)
         {
+            if (registeredAttachments.find(subpassAttachment.renderpassAttachment) != registeredAttachments.end())
+            {
+                subpass->colorAttachmentsToActivate.push_back(subpassAttachment.renderpassAttachment->attachmentIndex);
+                continue;
+            }
+
             // All the other attachment types are handled during runtime
             if (subpassAttachment.type != SubpassAttachment::AS_COLOR)
+            {
                 continue;
+            }
 
-            GLenum currentColorAttachmentIndex = GL_COLOR_ATTACHMENT0 + pass.colorAttachmentIndices.size();
+            GLenum currentColorAttachmentIndex = GL_COLOR_ATTACHMENT0 + pass.allColorAttachmentIndices.size();
+            subpassAttachment.renderpassAttachment->attachmentIndex = currentColorAttachmentIndex;
             glFramebufferTexture2D(GL_FRAMEBUFFER, currentColorAttachmentIndex, GL_TEXTURE_2D, subpassAttachment.renderpassAttachment->id, 0);
 
-            subpass->colorAttachmentsToActivate.push_back(currentColorAttachmentIndex);
-            pass.colorAttachmentIndices.push_back(currentColorAttachmentIndex);
+            subpass->colorAttachmentsToActivate.push_back(subpassAttachment.renderpassAttachment->attachmentIndex);
+
+            pass.allColorAttachmentIndices.push_back(currentColorAttachmentIndex);
+            registeredAttachments.insert(subpassAttachment.renderpassAttachment);
         }
     }
 
@@ -310,12 +329,13 @@ Subpass& Renderpass::AddSubpass(const char* name, Shader* shader, MeshTag accept
     return AddSubpass(name, shader, acceptedMeshTags, subpassAttachments, passSettings);
 }
 
-RenderpassAttachment& Renderpass::AddAttachment(const char* name, AttachmentFormat format)
+RenderpassAttachment& Renderpass::AddAttachment(RenderpassAttachment attachment)
 {
-    RenderpassAttachment* attachment = new RenderpassAttachment(name, format);
-    attachments.push_back(attachment);
+    RenderpassAttachment* newAttachment = new RenderpassAttachment();
+    *newAttachment = attachment;
+    attachments.push_back(newAttachment);
 
-    return *attachment;
+    return *newAttachment;
 }
 
 RenderpassAttachment& Renderpass::GetAttachment(const char* attachmentName)
@@ -341,7 +361,7 @@ RenderpassAttachment& Renderpass::AddOutputAttachment()
     {
         char* outputAttachmentName = new char[256]; 
         sprintf(outputAttachmentName, "%s_output", name);
-        outputAttachment = &AddAttachment(outputAttachmentName, AttachmentFormat::FLOAT_3);
+        outputAttachment = &AddAttachment(RenderpassAttachment(outputAttachmentName, AttachmentFormat::FLOAT_3));
     }
 
     return *outputAttachment;   

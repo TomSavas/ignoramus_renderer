@@ -52,42 +52,72 @@ DeferredTest::DeferredTest()
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
+    Shader& dualDepthPeelingInitShader = shaders.AddShader("dual depth peeling init",
+        ShaderDescriptor(
+            {
+                //ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_init.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_init.frag", ShaderDescriptor::FRAGMENT_SHADER),
+            }));
+    Shader& dualDepthPeelingShader = shaders.AddShader("dual depth peeling",
+        ShaderDescriptor(
+            {
+                //ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER),
+            }));
+    Shader& dualDepthPeelingBackBlendingShader = shaders.AddShader("dual depth peeling back blending",
+        ShaderDescriptor(
+            {
+                //ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_back_blending.vert", ShaderDescriptor::VERTEX_SHADER),
+                //ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_back_blending.frag", ShaderDescriptor::FRAGMENT_SHADER),
+            }));
+    Shader& dualDepthPeelingCompositionShader = shaders.AddShader("dual depth peeling composition",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::VERTEX_SHADER),
+                //ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_composition.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_composition.frag", ShaderDescriptor::FRAGMENT_SHADER),
+            }));
 
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
 
     // TODO: potentially nicer architectural solution would be to redo everything into a "description"..?
     Renderpass& deferredLightingPass = pipeline.AddPass("Deferred lighting pass");
+    RenderpassAttachment& deferredDepth    = deferredLightingPass.AddAttachment(RenderpassAttachment("g_depth",    AttachmentFormat::DEPTH));
+    RenderpassAttachment& deferredPosition = deferredLightingPass.AddAttachment(RenderpassAttachment("g_position", AttachmentFormat::FLOAT_3));
+    RenderpassAttachment& deferredNormal   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_normal",   AttachmentFormat::FLOAT_3));
+    RenderpassAttachment& deferredAlbedo   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_albedo",   AttachmentFormat::FLOAT_3));
+    RenderpassAttachment& deferredSpecular = deferredLightingPass.AddAttachment(RenderpassAttachment("g_specular", AttachmentFormat::FLOAT_3));
     deferredLightingPass.AddSubpass("Geometry subpass", &geometryShader, OPAQUE,
         {
-#define G_BUF_DEPTH    "g_depth"
-            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_DEPTH,    AttachmentFormat::DEPTH),   SubpassAttachment::AS_DEPTH),
-#define G_BUF_POSITION "g_position"
-            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_POSITION, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
-#define G_BUF_NORMAL   "g_normal"
-            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_NORMAL,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
-#define G_BUF_ALBEDO   "g_albedo"
-            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_ALBEDO,   AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
-#define G_BUF_SPECULAR "g_specular"
-            SubpassAttachment(&deferredLightingPass.AddAttachment(G_BUF_SPECULAR, AttachmentFormat::FLOAT_3), SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&deferredDepth,    SubpassAttachment::AS_DEPTH),
+            SubpassAttachment(&deferredPosition, SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&deferredNormal,   SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_COLOR),
         });
     deferredLightingPass.AddSubpass("Composition-lighting subpass", &deferredLightingShader, SCREEN_QUAD,
         {
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
-            SubpassAttachment(&deferredLightingPass.AddOutputAttachment(),         SubpassAttachment::AS_COLOR),
-            SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_ALBEDO),   SubpassAttachment::AS_TEXTURE, "tex_diffuse"),
-            SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_POSITION), SubpassAttachment::AS_TEXTURE, "tex_pos"),
-            SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_NORMAL),   SubpassAttachment::AS_TEXTURE, "tex_normal"),
-            SubpassAttachment(&deferredLightingPass.GetAttachment(G_BUF_SPECULAR), SubpassAttachment::AS_TEXTURE, "tex_specular"),
+            SubpassAttachment(&deferredLightingPass.AddOutputAttachment(), SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&deferredPosition, SubpassAttachment::AS_TEXTURE, "tex_pos"),
+            SubpassAttachment(&deferredNormal,   SubpassAttachment::AS_TEXTURE, "tex_normal"),
+            SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_TEXTURE, "tex_diffuse"),
+            SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_TEXTURE, "tex_specular"),
         });
 
-//#define DEPTH_PEELING_TRANSPARENCY
-#define UNSORTED_FORWARD_TRANSPARENCY
+//#define DUAL_DEPTH_PEELING_TRANSPARENCY
+#define DEPTH_PEELING_TRANSPARENCY
+//#define UNSORTED_FORWARD_TRANSPARENCY
 
 #ifdef DEPTH_PEELING_TRANSPARENCY
 #define DEPTH_PASS_COUNT 6
     Renderpass& depthPeelingPass = pipeline.AddPass("Depth peeling pass");
-    RenderpassAttachment& depthPeelingDepthA = depthPeelingPass.AddAttachment("depth_peel_depth_A", AttachmentFormat::DEPTH);
-    RenderpassAttachment& depthPeelingDepthB = depthPeelingPass.AddAttachment("depth_peel_depth_B", AttachmentFormat::DEPTH);
+    RenderpassAttachment& depthPeelingDepthA = depthPeelingPass.AddAttachment(RenderpassAttachment("depth_peel_depth_A", AttachmentFormat::DEPTH));
+    RenderpassAttachment& depthPeelingDepthB = depthPeelingPass.AddAttachment(RenderpassAttachment("depth_peel_depth_B", AttachmentFormat::DEPTH));
     for (int i = 0; i < DEPTH_PASS_COUNT; i++)
     {
         char* subpassName = new char[64];
@@ -102,7 +132,7 @@ DeferredTest::DeferredTest()
         bool evenPeel = i % 2 == 0;
         Subpass& subpass = depthPeelingPass.AddSubpass(subpassName, &depthPeelingShader, TRANSPARENT,
             { 
-                SubpassAttachment(&depthPeelingPass.AddAttachment(outputBuffer, AttachmentFormat::FLOAT_4), SubpassAttachment::AS_COLOR), // Not actually necessary, just for debug purposes
+                SubpassAttachment(&depthPeelingPass.AddAttachment(RenderpassAttachment(outputBuffer, AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR), // Not actually necessary, just for debug purposes -- could blend into output immediatelly
                 SubpassAttachment(evenPeel ? &depthPeelingDepthA : &depthPeelingDepthB,                     SubpassAttachment::AS_DEPTH),
                 SubpassAttachment(evenPeel ? &depthPeelingDepthB : &depthPeelingDepthA,                     SubpassAttachment::AS_TEXTURE, "greater_depth"),
             }, peelSettings);
@@ -110,13 +140,71 @@ DeferredTest::DeferredTest()
 #endif //DEPTH_PEELING_TRANSPARENCY
 
 #ifdef DUAL_DEPTH_PEELING_TRANSPARENCY
-#define DEPTH_PASS_COUNT 6
+#define DEPTH_PASS_COUNT 3
+#define CLEAR_DEPTH -99999.f
+#define MIN_DEPTH 0.f
+#define MAX_DEPTH 1.f
+    Renderpass& dualDepthPeelingPass = pipeline.AddPass("Dual depth peeling pass");
+    RenderpassAttachment& minMaxDepthA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_A", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(CLEAR_DEPTH, CLEAR_DEPTH, 0.f, 0.f))));
+    RenderpassAttachment& minMaxDepthB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_B", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(-MIN_DEPTH, MAX_DEPTH, 0.f, 0.f))));
+    RenderpassAttachment& frontBlenderA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("front_blender_A", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
+    RenderpassAttachment& frontBlenderB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("front_blender_B", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
+    RenderpassAttachment& tempBackBlenderA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("temp_back_blender_A", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
+    RenderpassAttachment& tempBackBlenderB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("temp_back_blender_B", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
+    RenderpassAttachment& finalBackBlender = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("back_blender", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.5f, 0.5f, 0.5f, 0.f))));
+
+    PassSettings dualDepthPeelingInitPassSettings = PassSettings::DefaultSubpassSettings();
+    dualDepthPeelingInitPassSettings.ignoreApplication = false;
+    dualDepthPeelingInitPassSettings.enable = { GL_BLEND };
+    dualDepthPeelingInitPassSettings.blendEquation = GL_MAX;
+    dualDepthPeelingPass.AddSubpass("Init subpass", &dualDepthPeelingInitShader, TRANSPARENT,
+        {
+            SubpassAttachment(&minMaxDepthA, SubpassAttachment::AS_COLOR)
+        }, dualDepthPeelingInitPassSettings);
+
+    // "First" pass is the initialization subpass
+    for (int i = 1; i <= DEPTH_PASS_COUNT; i++)
+    {
+        PassSettings subpassSettings = PassSettings::DefaultSubpassSettings();
+        subpassSettings.ignoreApplication = false;
+        subpassSettings.enable = { GL_BLEND };
+        subpassSettings.blendEquation = GL_MAX;
+
+        bool evenPeel = i % 2 == 0;
+
+        char* peelSubpassName = new char[64];
+        sprintf(peelSubpassName, "Dual depth peel #%d subpass", i);
+        Subpass& peelSubpass = dualDepthPeelingPass.AddSubpass(peelSubpassName, &dualDepthPeelingShader, TRANSPARENT,
+            { 
+                SubpassAttachment(evenPeel ? &minMaxDepthA     : &minMaxDepthB,     SubpassAttachment::AS_COLOR, AttachmentClearOpts(glm::vec4(CLEAR_DEPTH, CLEAR_DEPTH, 0.f, 0.f))),
+                SubpassAttachment(evenPeel ? &frontBlenderA    : &frontBlenderB,    SubpassAttachment::AS_COLOR, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))),
+                SubpassAttachment(evenPeel ? &tempBackBlenderA : &tempBackBlenderB, SubpassAttachment::AS_COLOR, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))),
+
+                SubpassAttachment(evenPeel ? &minMaxDepthB     : &minMaxDepthA,     SubpassAttachment::AS_TEXTURE, "previousDepthBlender"),
+                SubpassAttachment(evenPeel ? &frontBlenderB    : &frontBlenderA,    SubpassAttachment::AS_TEXTURE, "previousFrontBlender"),
+            }, subpassSettings);
+
+        char* blendingSubpassName = new char[64];
+        sprintf(blendingSubpassName, "Dual depth peel #%d back blending subpass", i);
+        subpassSettings = PassSettings::DefaultSubpassSettings();
+        subpassSettings.ignoreApplication = false;
+        subpassSettings.enable = { GL_BLEND };
+        subpassSettings.blendEquation = GL_FUNC_ADD;
+        subpassSettings.srcBlendFactor = GL_SRC_ALPHA;
+        subpassSettings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+        Subpass& backBlendSubpass = dualDepthPeelingPass.AddSubpass(blendingSubpassName, &dualDepthPeelingBackBlendingShader, SCREEN_QUAD,
+            { 
+                SubpassAttachment(&finalBackBlender, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(evenPeel ? &tempBackBlenderA : &tempBackBlenderB, SubpassAttachment::AS_TEXTURE, "tempBackBlender"),
+            }, subpassSettings);
+    }
 #endif //DUAL_DEPTH_PEELING_TRANSPARENCY
 
     pipeline.AddOutputPass(quadTextureShader);
 
 #ifdef UNSORTED_FORWARD_TRANSPARENCY
     PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
+    settings.ignoreApplication = false;
     settings.ignoreClear = true;
     settings.enable = { GL_BLEND, };
     //settings.enable.push_back(GL_DEPTH_TEST);
@@ -174,6 +262,26 @@ DeferredTest::DeferredTest()
         }
     }
 #endif //DEPTH_PEELING_TRANSPARENCY
+
+#ifdef DUAL_DEPTH_PEELING_TRANSPARENCY
+    PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
+    settings.ignoreApplication = false;
+    settings.ignoreClear = true;
+    settings.enable = { GL_BLEND };
+    settings.blendEquation = GL_FUNC_ADD;
+    settings.srcBlendFactor = GL_SRC_ALPHA;
+    settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+
+    Renderpass& dualDepthPeelingCompositionPass = pipeline.AddPass("Dual depth peeling composition pass", settings);
+    dualDepthPeelingCompositionPass.fbo = 0;
+
+    dualDepthPeelingCompositionPass.AddSubpass("Dual depth peeling composition subpass", &dualDepthPeelingCompositionShader, SCREEN_QUAD,
+            {
+                    // Default framebuffer already has a color attachment, no need to add another one
+                SubpassAttachment(DEPTH_PASS_COUNT % 2 == 0 ? &frontBlenderA : &frontBlenderB, SubpassAttachment::AS_TEXTURE, "frontBlender"),
+                SubpassAttachment(&finalBackBlender, SubpassAttachment::AS_TEXTURE, "backBlender"),
+            }, settings);
+#endif //DUAL_DEPTH_PEELING_TRANSPARENCY
 
     assert(pipeline.ConfigureAttachments());
 
@@ -270,11 +378,29 @@ void DeferredTest::Render()
         }
         if (renderpass.fbo != 0)
         {
-            glDrawBuffers(renderpass.colorAttachmentIndices.size(), renderpass.colorAttachmentIndices.data());
+            glDrawBuffers(renderpass.allColorAttachmentIndices.size(), renderpass.allColorAttachmentIndices.data());
         }
         renderpass.settings.Apply();
         renderpass.settings.Clear();
         previousSettings = renderpass.settings;
+
+        // TODO: this duplicates clears and is generally pretty stupid
+        {
+            for (auto* attachment : renderpass.attachments)
+            {
+                if (attachment->hasSeparateClearOpts && attachment->attachmentIndex != INVALID_ATTACHMENT_INDEX)
+                {
+                    glDrawBuffers(1, &attachment->attachmentIndex);
+                    glClearColor(attachment->clearOpts.color.x, attachment->clearOpts.color.y, attachment->clearOpts.color.z,
+                            attachment->clearOpts.color.w);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                }
+            }
+            if (renderpass.fbo != 0)
+            {
+                glDrawBuffers(renderpass.allColorAttachmentIndices.size(), renderpass.allColorAttachmentIndices.data());
+            }
+        }
 
         for (int j = 0; j < renderpass.subpasses.size(); j++)
         {
@@ -349,6 +475,23 @@ void DeferredTest::Render()
             subpass.settings.Apply();
             subpass.settings.Clear();
             previousSettings = subpass.settings;
+            // TODO: this duplicates clears and is generally pretty stupid
+            {
+                for (auto& attachment : subpass.attachments)
+                {
+                    if (attachment.hasSeparateClearOpts && attachment.renderpassAttachment->attachmentIndex != INVALID_ATTACHMENT_INDEX)
+                    {
+                        glDrawBuffers(1, &attachment.renderpassAttachment->attachmentIndex);
+                        glClearColor(attachment.clearOpts.color.x, attachment.clearOpts.color.y, attachment.clearOpts.color.z,
+                                attachment.clearOpts.color.w);
+                        glClear(GL_COLOR_BUFFER_BIT);
+                    }
+                }
+                if (renderpass.fbo != 0)
+                {
+                    glDrawBuffers(subpass.colorAttachmentsToActivate.size(), subpass.colorAttachmentsToActivate.data());
+                }
+            }
 
             subpass.shader->AddDummyForUnboundTextures(pipeline.dummyTextureUnit);
             for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
