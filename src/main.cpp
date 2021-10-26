@@ -27,7 +27,7 @@ MessageCallback(GLenum source,
         const GLchar* message,
         const void* userParam)
 {
-    LOG_ERROR("OpenGL", "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s",
+    LOG_WARN("OpenGL", "%s type = 0x%x, severity = 0x%x, message = %s",
             ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
             type, severity, message );
 }

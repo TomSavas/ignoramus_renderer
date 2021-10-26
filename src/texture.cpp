@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "texture.h"
+#include "log.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -50,10 +51,10 @@ bool Texture::Load(bool reload)
 
         if (texture == nullptr)
         {
-            printf("stb failed loading %s\n", filepath);
+            LOG_INFO("Texture", "stb failed loading %s\n", filepath);
             return false;
         }
-        printf("loading texture %s %dx%d\n", filepath, size.x, size.y);
+        LOG_INFO("Texture", "Loading texture %s %dx%d", filepath, size.x, size.y);
 
         GLenum format;
         switch(componentNum)
