@@ -16,7 +16,8 @@
 #ifdef DEBUG
 #define SHADER_PATH "../src/shaders/"
 #else
-#define SHADER_PATH "./shaders/"
+#define SHADER_PATH "../src/shaders/"
+//#define SHADER_PATH "./shaders/" TODO: update cmake to copy shaders next to bin
 #endif
 
 struct ShaderDescriptor
@@ -131,6 +132,8 @@ struct Watchlist
     void Remove(Shader& shader);
 };
 
+#define DEFAULT_SHADER "default"
+#define SCREEN_QUAD_TEXTURE_SHADER "screen quad texture shader"
 struct ShaderPool
 {
     ShaderPool();

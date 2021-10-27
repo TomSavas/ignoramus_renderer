@@ -4,10 +4,10 @@
 #include <time.h>
 #include <stdarg.h>
 
-#define CYAN_ESC   "\033[0;36m"
-#define YELLOW_ESC "\033[0;33m"
-#define RED_ESC    "\033[0;31m"
-#define RESET_ESC  "\033[m"
+#define RED_ESC     "\033[0;31m"
+#define YELLOW_ESC  "\033[0;33m"
+#define CYAN_ESC    "\033[0;36m"
+#define RESET_ESC   "\033[m"
 
 inline void log(const char* level, const char* tag, FILE* stream, const char* escapeCodes, const char* fmt, ...)
 {
@@ -27,14 +27,16 @@ inline void log(const char* level, const char* tag, FILE* stream, const char* es
     va_end(args);
 }
 
-#define LOG_INFO(tag, ...)      log("INFO",  tag, stderr, CYAN_ESC, __VA_ARGS__)
-#define LOG_WARN(tag, ...)      log("WARN",  tag, stderr, YELLOW_ESC, __VA_ARGS__)
-#define LOG_ERROR(tag, ...)     log("ERROR", tag, stderr, RED_ESC, __VA_ARGS__)
 #ifdef DEBUG
-    #define LOG_DEBUG(tag, ...) log("DEBUG", tag, stdout, "", __VA_ARGS__)
+    #define LOG(level, tag, stream, color, ...) log(level, tag, stream, color, __VA_ARGS__)
 #else
-    #define LOG_DEBUG(tag, ...)
+    #define LOG(level, tag, stream, color, ...)
 #endif
+
+#define LOG_ERROR(tag, ...) LOG("ERROR", tag, stderr, RED_ESC,    __VA_ARGS__)
+#define LOG_WARN(tag, ...)  LOG("WARN",  tag, stderr, YELLOW_ESC, __VA_ARGS__)
+#define LOG_INFO(tag, ...)  LOG("INFO",  tag, stderr, CYAN_ESC,   __VA_ARGS__)
+#define LOG_DEBUG(tag, ...) LOG("DEBUG", tag, stdout, "",         __VA_ARGS__)
 
 #include <assert.h>
 #define ASSERT(predicate) assert(predicate)

@@ -1,3 +1,5 @@
+#pragma once 
+
 #include <vector>
 #include <unordered_map>
 
@@ -5,6 +7,7 @@
 
 #include "mesh.h"
 #include "perf_data.h"
+#include "scene.h"
 
 enum class AttachmentFormat
 {
@@ -136,16 +139,20 @@ struct RenderPipeline
     std::vector<Renderpass*> passes;
     PerfData perfData;
 
+    RenderPipeline();
+
     Renderpass& AddPass(const char* name, PassSettings passSettings = PassSettings::DefaultRenderpassSettings());
-    Renderpass& AddOutputPass(Shader& screenQuadShader);
+    Renderpass& AddOutputPass(ShaderPool& shaders);
 
     // Configurues all attachment in the order they are attached to the pipeline
     bool ConfigureAttachments();
-    bool ConfigureAttachments(Renderpass& pass);
 
-    //void Render(Scene& scene, Shaders& shaders);
+    void Render(Scene& scene, ShaderPool& shaders);
 
     // TODO: a horrible place to put this
     int dummyTextureUnit;
     static RenderpassAttachment& DummyAttachment();
+
+    GLuint timeQuery;
+    unsigned int materialUbo;
 };

@@ -141,6 +141,12 @@ void PassSettings::Apply(PassSettings& previousSettings)
 
 // -------------------------------------------------------------------------------------------------
 
+RenderPipeline::RenderPipeline()
+{
+    glGenBuffers(1, &materialUbo);
+    glGenQueries(1, &timeQuery);
+}
+
 Renderpass& RenderPipeline::AddPass(const char* name, PassSettings passSettings)
 {
     // TODO: Check if a pass with the same name extists already
@@ -150,7 +156,7 @@ Renderpass& RenderPipeline::AddPass(const char* name, PassSettings passSettings)
     return *pass;
 }
 
-Renderpass& RenderPipeline::AddOutputPass(Shader& screenQuadShader)
+Renderpass& RenderPipeline::AddOutputPass(ShaderPool& shaders)
 {
     Renderpass& outputPass = AddPass("Output pass", PassSettings::DefaultOutputRenderpassSettings());
     outputPass.fbo = 0;
@@ -164,7 +170,7 @@ Renderpass& RenderPipeline::AddOutputPass(Shader& screenQuadShader)
     }
     ASSERT(previousValidOutputAttachment != nullptr);
 
-    Subpass& subpass = outputPass.AddSubpass("output subpass", &screenQuadShader, SCREEN_QUAD,
+    Subpass& subpass = outputPass.AddSubpass("output subpass", &shaders.GetShader(SCREEN_QUAD_TEXTURE_SHADER), SCREEN_QUAD,
         {
             // Default framebuffer already has a color attachment, no need to add another one
             SubpassAttachment(previousValidOutputAttachment, SubpassAttachment::AS_TEXTURE, "tex")
@@ -173,34 +179,7 @@ Renderpass& RenderPipeline::AddOutputPass(Shader& screenQuadShader)
     return outputPass;
 }
 
-bool RenderPipeline::ConfigureAttachments()
-{
-    // Activating dummy texture and just letting it sit here forever
-    {
-        int maxTexUnits = 80;
-        glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxTexUnits);
-        dummyTextureUnit = maxTexUnits - 1;
-        LOG_INFO("Render pipeline", "Max texture units: %d. Using texture unit #%d for dummy texture." , maxTexUnits, dummyTextureUnit);
-
-        Texture dummyTexture("../assets/textures/dummy_black.png", true);
-        dummyTexture.Activate(GL_TEXTURE0 + dummyTextureUnit);
-    }
-
-    for (auto* renderpass : passes)
-    {
-        ASSERT(renderpass != nullptr);
-        if (!ConfigureAttachments(*renderpass))
-        {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            return false;
-        }
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return true;
-}
-
-bool RenderPipeline::ConfigureAttachments(Renderpass& pass)
+bool ConfigureRenderpassAttachments(Renderpass& pass)
 {
     if (pass.fbo == 0)
     {
@@ -293,6 +272,33 @@ bool RenderPipeline::ConfigureAttachments(Renderpass& pass)
     // TODO: set the depth buffer here as well IFF we have only one of those. If we have many, we will be swapping them out at runtime
 }
 
+bool RenderPipeline::ConfigureAttachments()
+{
+    // Activating dummy texture and just letting it sit here forever
+    {
+        int maxTexUnits = 80;
+        glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxTexUnits);
+        dummyTextureUnit = maxTexUnits - 1;
+        LOG_INFO("Render pipeline", "Max texture units: %d. Using texture unit #%d for dummy texture." , maxTexUnits, dummyTextureUnit);
+
+        Texture dummyTexture("../assets/textures/dummy_black.png", true);
+        dummyTexture.Activate(GL_TEXTURE0 + dummyTextureUnit);
+    }
+
+    for (auto* renderpass : passes)
+    {
+        ASSERT(renderpass != nullptr);
+        if (!ConfigureRenderpassAttachments(*renderpass))
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            return false;
+        }
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
 /*static*/ RenderpassAttachment& RenderPipeline::DummyAttachment()
 {
     static RenderpassAttachment* dummyAttachment = nullptr;
@@ -367,299 +373,206 @@ RenderpassAttachment& Renderpass::AddOutputAttachment()
     return *outputAttachment;   
 }
 
-// -------------------------------------------------------------------------------------------------
+void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
+{
+    // TODO: don't really need to do every frame
+    scene.BindSceneParams();
+    // TODO: support for multiple cameras
+    scene.BindCameraParams();
+    scene.BindLighting();
+    glBindBufferBase(GL_UNIFORM_BUFFER, Shader::modelParamBindingPoint, materialUbo);
 
+    float pipelineCpuDurationMs = 0.f;
+    float pipelineGpuDurationMs = 0.f;
 
+    static PassSettings previousSettings = PassSettings::DefaultSettings();
+    for (int i = 0; i < passes.size(); i++)
+    {
+        int activatedTextureCount = 0;
+        ASSERT(passes[i] != nullptr);
+        Renderpass& renderpass = *passes[i];
 
+        float renderpassCpuDurationMs = 0.f;
+        float renderpassGpuDurationMs = 0.f;
 
+        glBindFramebuffer(GL_FRAMEBUFFER, renderpass.fbo);
 
+        // TODO: srsly?
+        for (int j = 0; j < previousSettings.enable.size(); j++)
+        {
+            bool disable = true;
+            for (int k = 0; k < renderpass.settings.enable.size(); k++)
+            {
+                if (previousSettings.enable[j] == renderpass.settings.enable[k])
+                {
+                    disable = false;
+                    break;
+                }
+            }
 
+            if (disable)
+            {
+                glDisable(previousSettings.enable[j]);
+            }
+        }
+        if (renderpass.fbo != 0)
+        {
+            glDrawBuffers(renderpass.allColorAttachmentIndices.size(), renderpass.allColorAttachmentIndices.data());
+        }
+        renderpass.settings.Apply();
+        renderpass.settings.Clear();
+        previousSettings = renderpass.settings;
 
+        // TODO: this duplicates clears and is generally pretty stupid
+        {
+            for (auto* attachment : renderpass.attachments)
+            {
+                if (attachment->hasSeparateClearOpts && attachment->attachmentIndex != INVALID_ATTACHMENT_INDEX)
+                {
+                    glDrawBuffers(1, &attachment->attachmentIndex);
+                    glClearColor(attachment->clearOpts.color.x, attachment->clearOpts.color.y, attachment->clearOpts.color.z,
+                            attachment->clearOpts.color.w);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                }
+            }
+            if (renderpass.fbo != 0)
+            {
+                glDrawBuffers(renderpass.allColorAttachmentIndices.size(), renderpass.allColorAttachmentIndices.data());
+            }
+        }
 
+        for (int j = 0; j < renderpass.subpasses.size(); j++)
+        {
+            ASSERT(renderpass.subpasses[j] != nullptr);
+            Subpass& subpass = *renderpass.subpasses[j];
 
+            // Maybe move this after all the clears?
+            if (subpass.acceptedMeshTags == OPAQUE && scene.disableOpaque)
+            {
+                continue;
+            }
 
+            clock_t subpassStartTime = clock();
+            glBeginQuery(GL_TIME_ELAPSED, timeQuery);
 
+            subpass.shader->Use();
 
+            for (SubpassAttachment& subpassAttachment : subpass.attachments)
+            {
+                ASSERT(subpassAttachment.renderpassAttachment != nullptr);
 
+                unsigned int attachmentId = subpassAttachment.renderpassAttachment->id;
+                switch (subpassAttachment.type)
+                {
+                    case SubpassAttachment::AS_COLOR:
+                        continue;
+                    case SubpassAttachment::AS_DEPTH:
+                        // Remember, for the time being everything's a texture!
+                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attachmentId, 0);
+                        break;
+                    case SubpassAttachment::AS_TEXTURE:
+                        // TODO: Absolutely idiotic this. Should have a MRU eviction policy cache for texture units
+                        // ... maybe MRU is not the best choice? No clue, needs testing
+                        glActiveTexture(GL_TEXTURE0 + activatedTextureCount);
+                        subpass.shader->SetUniform(subpassAttachment.useFor, activatedTextureCount++);
+                        glBindTexture(GL_TEXTURE_2D, attachmentId);
+                        break;
+                    case SubpassAttachment::AS_BLIT:
+                        ASSERT(false);
+                        break;
+                }
 
+                if (strcmp(renderpass.name, "Depth peeling pass") == 0 && j == 0)
+                {
+                    float clearValue = 0.f;
+                    glClearTexImage(attachmentId, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &clearValue);
+                }
+            }
 
+            // TODO: seriously?
+            for (int k = 0; k < previousSettings.enable.size(); k++)
+            {
+                bool disable = true;
+                for (int l = 0; l < subpass.settings.enable.size(); l++)
+                {
+                    if (previousSettings.enable[k] == subpass.settings.enable[l])
+                    {
+                        disable = false;
+                        break;
+                    }
+                }
 
+                if (disable)
+                {
+                    glDisable(previousSettings.enable[k]);
+                }
+            }
+            if (renderpass.fbo != 0)
+            {
+                glDrawBuffers(subpass.colorAttachmentsToActivate.size(), subpass.colorAttachmentsToActivate.data());
+            }
+            subpass.settings.Apply();
+            subpass.settings.Clear();
+            previousSettings = subpass.settings;
+            // TODO: this duplicates clears and is generally pretty stupid
+            {
+                for (auto& attachment : subpass.attachments)
+                {
+                    if (attachment.hasSeparateClearOpts && attachment.renderpassAttachment->attachmentIndex != INVALID_ATTACHMENT_INDEX)
+                    {
+                        glDrawBuffers(1, &attachment.renderpassAttachment->attachmentIndex);
+                        glClearColor(attachment.clearOpts.color.x, attachment.clearOpts.color.y, attachment.clearOpts.color.z,
+                                attachment.clearOpts.color.w);
+                        glClear(GL_COLOR_BUFFER_BIT);
+                    }
+                }
+                if (renderpass.fbo != 0)
+                {
+                    glDrawBuffers(subpass.colorAttachmentsToActivate.size(), subpass.colorAttachmentsToActivate.data());
+                }
+            }
 
+            subpass.shader->AddDummyForUnboundTextures(dummyTextureUnit);
+            for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
+            {
+                // TODO: not necessary if already bound
+                //       even if bound and changed can only partially update
+                meshWithMaterial.material->Bind();
 
+                glm::mat4 model = meshWithMaterial.mesh.transform.Model();
+                glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
+                glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);
+                //glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+                // TODO: Should be reworked - there should be some sort of communication between the shader and model here.
+                // Shader dictates what textures it needs, the model provides them
+                meshWithMaterial.mesh.Render(*subpass.shader);
+            }
 
+            clock_t subpassEndTime = clock();
+            clock_t subpassCpuDuration = subpassEndTime - subpassStartTime;
+            float subpassCpuDurationMs = subpassCpuDuration * 1000.f / CLOCKS_PER_SEC;
+            subpass.perfData.cpu.AddFrametime(subpassCpuDurationMs);
+            renderpassCpuDurationMs += subpassCpuDurationMs;
 
+            glEndQuery(GL_TIME_ELAPSED);
+            bool queryDone = false;
+            while (!queryDone) 
+            {
+                glGetQueryObjectiv(timeQuery, GL_QUERY_RESULT_AVAILABLE, (int*)&queryDone);
+            }
+            long subpassGpuDurationNs;
+            glGetQueryObjecti64v(timeQuery, GL_QUERY_RESULT, &subpassGpuDurationNs);
+            double subpassGpuDurationMs = (double)subpassGpuDurationNs / 1000000.0;
+            renderpassGpuDurationMs += subpassGpuDurationMs;
+            subpass.perfData.gpu.AddFrametime(subpassGpuDurationMs);
+        }
+        renderpass.perfData.cpu.AddFrametime(renderpassCpuDurationMs);
+        renderpass.perfData.gpu.AddFrametime(renderpassGpuDurationMs);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-///*static*/ Renderpass Renderpass::OutputPass(const char* outputAttachmentName)
-//{
-//    Renderpass pass = Renderpass("output pass", SCREEN_QUAD)
-//        .RequestAttachmentFromPipeline({ outputAttachmentName, AS_TEXTURE, "tex" })
-//        .AddSubpass(new Shader("../src/shaders/texture.vert", "../src/shaders/texture.frag"));
-//    pass.isOutputPass = true;
-//
-//    return pass;
-//}
-//
-//std::vector<const char*> Renderpass::OwnedAttachmentNames()
-//{
-//    std::vector<const char*> names;
-//    for (auto& attachment : ownedAttachments)
-//        names.push_back(attachment.name);
-//
-//    return names;
-//}
-//
-//bool RenderPipeline::InitializePipeline()
-//{
-//    // Activating dummy texture and just letting it sit here forever
-//    {
-//        int maxTexUnits = 80;
-//        glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxTexUnits);
-//        dummyTextureUnit = maxTexUnits - 1;
-//        LOG_INFO("Max texture units: %d. Using texture unit #%d for dummy texture." , maxTexUnits, dummyTextureUnit);
-//
-//        Texture dummyTexture("../assets/textures/dummy_black.png", true);
-//        dummyTexture.Activate(GL_TEXTURE0 + dummyTextureUnit);
-//    }
-//
-//    bool outputPassFound = false;
-//
-//    // TODO: rework this from for n do x, to a do X
-//    for (Renderpass& pass : passes)
-//    {
-//        if (pass.isOutputPass)
-//        {
-//            pass.fbo = 0;
-//            outputPassFound = true;
-//        }
-//        else
-//        {
-//            glGenFramebuffers(1, &pass.fbo);
-//        }
-//        glBindFramebuffer(GL_FRAMEBUFFER, pass.fbo);
-//
-//        // TODO: 8 buffers are guaranteed, might need more in the future though. Need to query system for max draw buffers in those cases
-//        unsigned int colorAttachments[8];
-//        unsigned int colorAttachmentCount = 0;
-//
-//        LOG_DEBUG("pass: %s", pass.name);
-//        for (Attachment& attachment : pass.ownedAttachments)
-//        {
-//            attachment.owner = &pass;
-//            LOG_DEBUG("owned attachment: %s", attachment.name);
-//
-//            switch (DeviseAttachmentPurpose(attachment))
-//            {
-//                case AttachmentPurpose::DEPTH:
-//                case AttachmentPurpose::STENCIL:
-//                case AttachmentPurpose::DEPTH_STENCIL:
-//                    glGenRenderbuffers(1, &attachment.id);
-//                    glBindRenderbuffer(GL_RENDERBUFFER, attachment.id);
-//
-//                    // TODO change to depth/stencil/depth_stencil
-//                    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 1920, 1080);
-//                    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, attachment.id);
-//                    break;
-//                default:
-//                    glGenTextures(1, &attachment.id);
-//                    glBindTexture(GL_TEXTURE_2D, attachment.id);
-//
-//                    // TODO: separate params for this
-//                    if (attachment.format == AttachmentFormat::DEPTH)
-//                    {
-//                        if (attachment.purpose == AttachmentPurpose::DEPTH)
-//                        {
-//                            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, 1920, 1080, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//                            // potentially some more settings
-//                        }
-//                        else if (attachment.purpose == AttachmentPurpose::COLOR)
-//                        {
-//                            // NOTE: THIS IS COMPLETELY FUCKED. How do we bind a "depth" texture for reading?
-//                            //glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, 1920, 1080, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, NULL);
-//                            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1920, 1080, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//
-//                            break;
-//                        }
-//                    }
-//                    else
-//                    {
-//                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1920, 1080, 0, GL_RGBA, GL_FLOAT, NULL);
-//                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//                    }
-//
-//                    if (attachment.purpose == AttachmentPurpose::DEPTH)
-//                    {
-//                        LOG_DEBUG("added as depth");
-//                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attachment.id, 0);
-//                    }
-//                    else
-//                    {
-//                        attachment.colorAttachmentIndex = colorAttachmentCount++;
-//                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachment.colorAttachmentIndex, GL_TEXTURE_2D, attachment.id, 0);
-//                        colorAttachments[attachment.colorAttachmentIndex] = GL_COLOR_ATTACHMENT0 + attachment.colorAttachmentIndex;
-//                        LOG_DEBUG("added as color");
-//                    }
-//
-//                    break;
-//            }
-//            LOG_DEBUG("------------------------");
-//            attachments.emplace(attachment.name, &attachment);
-//        }
-//
-//        for (int i = 0; i < pass.requestedAttachments.size(); ++i)
-//        {
-//            //if (pass.requestedAttachments[i].requestAs != AS_ATTACHMENT)
-//            // TEMP
-//            if (pass.requestedAttachments[i].requestAs != AS_ATTACHMENT && pass.requestedAttachments[i].requestAs != AS_DEPTH)
-//                continue;
-//
-//            auto attachmentIt = attachments.find(pass.requestedAttachments[i].name);
-//            if (attachmentIt == attachments.end())
-//            {
-//                ASSERTF("Attachment \"%s\" has not been previously initialized in the pipeline!\n", pass.requestedAttachments[i].name);
-//                return false;
-//            }
-//            Attachment* attachment = attachmentIt->second;
-//            assert(attachment != nullptr);
-//
-//            //LOG_DEBUG("requested attachment: %s", attachment->name);
-//
-//            // TEMP
-//            if (pass.requestedAttachments[i].requestAs == AS_DEPTH)
-//            {
-//                    glBindTexture(GL_TEXTURE_2D, attachment->id);
-//
-//                    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, 1920, 1080, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//
-//                    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attachment->id, 0);
-//                    //LOG_DEBUG("added as depth");
-//                    continue;
-//            }
-//
-//            switch (DeviseAttachmentPurpose(*attachment))
-//            {
-//                case AttachmentPurpose::DEPTH:
-//                case AttachmentPurpose::STENCIL:
-//                case AttachmentPurpose::DEPTH_STENCIL:
-//                    // TODO: is this required?
-//                    glBindRenderbuffer(GL_RENDERBUFFER, attachment->id);
-//                    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, attachment->id);
-//                    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-//                    break;
-//                default:
-//                    // TODO: is this required?
-//                    //glBindTexture(GL_TEXTURE_2D, attachment->id);
-//
-//                    //attachment->colorAttachmentIndex = colorAttachmentCount++;
-//                    //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachment->colorAttachmentIndex, GL_TEXTURE_2D, attachment->id, 0);
-//                    //glBindTexture(GL_TEXTURE_2D, 0);
-//                    //colorAttachments[attachment->colorAttachmentIndex] = GL_COLOR_ATTACHMENT0 + attachment->colorAttachmentIndex;
-//
-//                    glBindTexture(GL_TEXTURE_2D, attachment->id);
-//
-//                    // TODO: separate params for this
-//                    if (attachment->format == AttachmentFormat::DEPTH)
-//                    {
-//                        if (attachment->purpose == AttachmentPurpose::DEPTH)
-//                        {
-//                            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, 1920, 1080, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//                            // potentially some more settings
-//                        }
-//                        else if (attachment->purpose == AttachmentPurpose::COLOR)
-//                        {
-//                            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, 1920, 1080, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//                        }
-//                    }
-//                    else
-//                    {
-//                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1920, 1080, 0, GL_RGBA, GL_FLOAT, NULL);
-//                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//                    }
-//
-//                    if (attachment->purpose == AttachmentPurpose::DEPTH)
-//                    {
-//                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attachment->id, 0);
-//                    }
-//                    else
-//                    {
-//                        attachment->colorAttachmentIndex = colorAttachmentCount++;
-//                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachment->colorAttachmentIndex, GL_TEXTURE_2D, attachment->id, 0);
-//                        colorAttachments[attachment->colorAttachmentIndex] = GL_COLOR_ATTACHMENT0 + attachment->colorAttachmentIndex;
-//                    }
-//
-//                    break;
-//            }
-//
-//            //LOG_DEBUG("------------------------");
-//        }
-//
-//        // TODO: oversized array should be fine?
-//        assert(!pass.isOutputPass || (pass.isOutputPass && colorAttachmentCount == 0));
-//        if (colorAttachmentCount > 0)
-//            glDrawBuffers(colorAttachmentCount, colorAttachments);
-//
-//        GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-//        if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
-//        {
-//            LOG_ERROR("Framebuffer incomplete! Reason: %0x", fboStatus);
-//            assert(false);
-//        }
-//    }
-//
-//    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-//    assert(outputPassFound);
-//
-//    return true;
-//}
-//
-//Attachment* RenderPipeline::RetrieveAttachment(const char* attachmentName) 
-//{
-//   auto attachment = attachments.find(attachmentName);
-//
-//   if (attachment == attachments.end())
-//       return nullptr;
-//
-//    return attachment->second;
-//}
+        pipelineCpuDurationMs += renderpassCpuDurationMs;
+        pipelineGpuDurationMs += renderpassGpuDurationMs;
+    }
+    perfData.cpu.AddFrametime(pipelineCpuDurationMs);
+    perfData.gpu.AddFrametime(pipelineGpuDurationMs);
+}

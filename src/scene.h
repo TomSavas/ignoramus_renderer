@@ -4,6 +4,7 @@
 
 #include "glm/glm.hpp"
 
+#include "camera.h"
 #include "mesh.h"
 #include "material.h"
 
@@ -28,6 +29,7 @@ struct Scene
 {
     std::unordered_map<MeshTag, std::vector<MeshWithMaterial>> meshes;
     bool disableOpaque = false;
+    Camera camera;
 
     struct SceneParams
     {
