@@ -20,6 +20,10 @@
 //#define SHADER_PATH "./shaders/" TODO: update cmake to copy shaders next to bin
 #endif
 
+#define COMMON_SHADER SHADER_PATH "common.glsl"
+#define VERT_COMMON_SHADER SHADER_PATH "common.vert"
+#define FRAG_COMMON_SHADER SHADER_PATH "common.frag"
+
 struct ShaderDescriptor
 {
     enum Type

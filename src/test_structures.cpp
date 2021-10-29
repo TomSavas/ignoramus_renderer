@@ -8,15 +8,39 @@ Scene TestScene()
 {
     Scene scene; 
 
+    // lights
+    {
+        scene.directionalLight.color = glm::vec3(1.f, 1.f, 1.f);
+        scene.directionalLight.transform = Transform(glm::vec3(0, 12000, 0), glm::quat(0.7, 0, 0, 0.7));
+        // TODO: all sorts of messed up. Completely doesn't work
+        {
+            glm::mat4 view = glm::lookAt(scene.directionalLight.transform.pos,
+                    scene.directionalLight.transform.pos + scene.directionalLight.transform.Forward(), scene.directionalLight.transform.Up());
+            glm::mat4 viewProjection = scene.camera.projection * view; // TEMP camera - change to ortho
+
+            scene.directionalLight.viewProjection = viewProjection;
+        }
+    }
+    scene.lighting.directionalBiasAndAngleBias = glm::vec4(0.000000001, 0.000000003, 0, 0);
+
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
     scene.sceneParams.wireframe = 0;
+    scene.sceneParams.specularPower = 32.f;
+    scene.sceneParams.viewportWidth = 1920.f;
+    scene.sceneParams.viewportHeight = 1080.f;
 
     Model transparentModel = Model("../assets/dragon.obj");
-    Model model = Model("../assets/sponza/sponza.obj");
+    Model sponza = Model("../assets/sponza/sponza.obj");
+    Model backpack = Model("../assets/backpack/backpack.obj");
     Material* opaqueMat = new OpaqueMaterial();
-    for (auto& mesh : model.meshes)
+    for (auto& mesh : sponza.meshes)
     {
         mesh.transform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(5.f, 5.f, 5.f));
+        scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
+    }
+    for (auto& mesh : backpack.meshes)
+    {
+        mesh.transform = Transform(glm::vec3(500.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(75.f, 75.f, 75.f));
         scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
     }
 
@@ -47,6 +71,22 @@ Scene TestScene()
 RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
 {
     RenderPipeline pipeline;
+
+    Shader& directionalShadowmapGenShader = shaders.AddShader("directional shadowmap gen",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+
+    Renderpass& directionalShadowmapGenPass = pipeline.AddPass("Directional shadowmap gen pass");
+    RenderpassAttachment& shadowmap = directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("shadowmap", AttachmentFormat::DEPTH));
+    directionalShadowmapGenPass.AddSubpass("Gen subpass", &directionalShadowmapGenShader, OPAQUE,
+        {
+            SubpassAttachment(&directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("fuck you", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&shadowmap, SubpassAttachment::AS_DEPTH)
+        });
+
     Shader& geometryShader = shaders.AddShader("geometry",
         ShaderDescriptor(
             {
@@ -57,7 +97,7 @@ RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
     Shader& deferredLightingShader = shaders.AddShader("deferred lighting", 
         ShaderDescriptor(
             {
-                ShaderDescriptor::File(SHADER_PATH "deferred_lighting.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
 
@@ -83,6 +123,7 @@ RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&deferredNormal,   SubpassAttachment::AS_TEXTURE, "tex_normal"),
             SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_TEXTURE, "tex_diffuse"),
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_TEXTURE, "tex_specular"),
+            SubpassAttachment(&shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
         });
 
     return pipeline;
@@ -103,7 +144,8 @@ RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
     Shader& forwardTransparencyShader = shaders.AddShader("forward transparency",
         ShaderDescriptor(
             {
-                ShaderDescriptor::File(SHADER_PATH "forward_transparency.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
     RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);
@@ -131,7 +173,7 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
     Shader& depthPeelingShader = shaders.AddShader("depth peeling", 
         ShaderDescriptor(
             {
-                ShaderDescriptor::File(SHADER_PATH "depth_peeling.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
     
@@ -208,13 +250,13 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
     Shader& dualDepthPeelingBackBlendingShader = shaders.AddShader("dual depth peeling back blending",
         ShaderDescriptor(
             {
-                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_back_blending.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
     Shader& dualDepthPeelingCompositionShader = shaders.AddShader("dual depth peeling composition",
         ShaderDescriptor(
             {
-                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_composition.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
 

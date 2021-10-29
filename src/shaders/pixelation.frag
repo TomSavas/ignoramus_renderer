@@ -6,6 +6,11 @@ uniform sampler2D tex;
 layout (std140) uniform SceneParams
 {
     int pixelSize;
+    bool wireframe;
+    float gamma;
+    float specularPower;
+    float viewportWidth;
+    float viewportHeight;
 };
 
 void main()

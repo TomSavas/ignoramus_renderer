@@ -20,13 +20,13 @@ ShaderPool::ShaderPool()
             { 
                 //ShaderDescriptor::File(ShaderDescriptor::Type::VERTEX_SHADER, ""),
                 //ShaderDescriptor::File(ShaderDescriptor::Type::FRAGMENT_SHADER, ""),
-                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::Type::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::Type::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "texture.frag", ShaderDescriptor::Type::FRAGMENT_SHADER),
             }));
     AddShader(SCREEN_QUAD_TEXTURE_SHADER, 
         ShaderDescriptor(
             { 
-                ShaderDescriptor::File(SHADER_PATH "texture.vert", ShaderDescriptor::Type::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::Type::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "texture.frag", ShaderDescriptor::Type::FRAGMENT_SHADER),
             }));
 

@@ -222,12 +222,19 @@ bool ConfigureRenderpassAttachments(Renderpass& pass)
         glBindTexture(GL_TEXTURE_2D, attachment.id);
         // TODO: fix hardcoded resolution and parameters
         glTexImage2D(GL_TEXTURE_2D, 0, ToGLInternalFormat(attachment.format), 1920, 1080, 0, ToGLFormat(attachment.format), ToGLType(attachment.format), NULL);
+
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         if (attachment.format == AttachmentFormat::DEPTH)
         {
             glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+            const float darkBorder[] = { 0.f, 0.f, 0.f, 0.f };
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, darkBorder);
         }
     }
 
@@ -380,6 +387,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
     // TODO: support for multiple cameras
     scene.BindCameraParams();
     scene.BindLighting();
+
     glBindBufferBase(GL_UNIFORM_BUFFER, Shader::modelParamBindingPoint, materialUbo);
 
     float pipelineCpuDurationMs = 0.f;

@@ -50,9 +50,23 @@ int main(void)
     while (!glfwWindowShouldClose(window)) 
     {
         scene.camera.Update(window);
-        scene.mainCameraParams.pos = scene.camera.transform.pos;
+        scene.mainCameraParams.nearFarPlanes = glm::vec4(scene.camera.nearClippingPlane, scene.camera.farClippingPlane, 0.f, 0.f);
+        scene.mainCameraParams.pos = glm::vec4(scene.camera.transform.pos, 0.f);
         scene.mainCameraParams.view = scene.camera.View();
         scene.mainCameraParams.projection = scene.camera.projection;
+        scene.mainCameraParams.viewProjection = scene.mainCameraParams.projection * scene.mainCameraParams.view;
+
+        // TODO: remove this nonsense and fix the initial directional light pos/view/projection
+        if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
+        {
+
+            scene.directionalLight.viewProjection = scene.mainCameraParams.viewProjection;
+            scene.directionalLight.transform = scene.camera.transform;
+        }
+
+        scene.lighting.directionalLightViewProjection = scene.directionalLight.viewProjection;
+        scene.lighting.directionalLightColor = glm::vec4(scene.directionalLight.color, 0.f);
+        scene.lighting.directionalLightDir = glm::vec4(scene.directionalLight.transform.Forward(), 0.f);
 
         shaders.ReloadChangedShaders();
 

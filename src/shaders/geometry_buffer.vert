@@ -20,7 +20,9 @@ layout (std140) uniform CameraParams
 {
     mat4 view;
     mat4 projection;
-    vec3 cameraPos;
+    mat4 viewProjection;
+    vec4 cameraPos;
+    vec4 nearFarPlanes;
 };
 
 //uniform mat4 model;

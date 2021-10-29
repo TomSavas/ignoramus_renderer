@@ -36,6 +36,9 @@ struct Scene
         int pixelSize;
         int wireframe;
         float gamma;
+        float specularPower;
+        float viewportWidth;
+        float viewportHeight;
     } sceneParams;
     unsigned int sceneParamsUboId;       
 
@@ -43,27 +46,38 @@ struct Scene
     {
         glm::mat4 view;
         glm::mat4 projection;
-        glm::vec3 pos;
+        glm::mat4 viewProjection;
+        glm::vec4 pos;
+        glm::vec4 nearFarPlanes;
     } mainCameraParams;
     unsigned int mainCameraParamsUboId;       
 
+    // TODO: extend to multiple lights
+    struct DirectionalLight
+    {
+        glm::vec3 color;
+        Transform transform;
+
+        glm::mat4 viewProjection = glm::mat4();
+        // OBB volume
+    } directionalLight;
+
     struct Lighting
     {
-        int usingShadowCubemap = false;
-        int usingShadowMap = false;
-
-        glm::vec3 pointLightPos = glm::vec3();
-        glm::vec3 directionalLightPos = glm::vec3();
-
         glm::mat4 directionalLightViewProjection = glm::mat4();
+        glm::vec4 directionalLightColor;
+        glm::vec4 directionalLightDir;
 
-        float directionalBias = 0.f;
-        float directionalAngleBias = 0.f;
-
-        float pointBias = 0.f;
-        float pointAngleBias = 0.f;
+        glm::vec4 directionalBiasAndAngleBias;
     } lighting;
     unsigned int lightingUboId;
+
+    struct PointLight
+    {
+        glm::vec3 color;
+        glm::vec3 pos;
+        glm::vec3 radius;
+    };
 
     Scene();
 

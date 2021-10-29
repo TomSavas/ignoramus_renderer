@@ -60,7 +60,7 @@ void GLLog(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei lengt
         case GL_DEBUG_TYPE_OTHER:
         default:
             strcpy(typeStr, "other");
-            break;
+            return; // TEMP
     }
 
     switch (severity)

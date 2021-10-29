@@ -11,8 +11,6 @@ layout (std140) uniform MaterialParams
 uniform sampler2D previousDepthBlender;
 uniform sampler2D previousFrontBlender;
 
-in vec2 uv;
-
 #define MAX_DEPTH 1.f
 
 void main()

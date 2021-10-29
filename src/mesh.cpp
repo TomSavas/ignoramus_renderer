@@ -110,6 +110,12 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
         GetTexture(path);
         textures["tex_normal"] = path;
     }
+    if (textures.find("tex_specular") == textures.end() && !mesh.MeshMaterial.map_Ks.empty())
+    {
+        std::string path = "../assets/" + mesh.MeshMaterial.map_Ks;
+        GetTexture(path);
+        textures["tex_specular"] = path;
+    }
 }
 
 void Mesh::Render(Shader &shader)
