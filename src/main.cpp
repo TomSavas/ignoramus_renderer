@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+#include <glm/gtx/string_cast.hpp>
+
 #include "imgui_wrapper.h"
 #include "scene.h"
 #include "test_structures.h"
@@ -56,17 +58,17 @@ int main(void)
         scene.mainCameraParams.projection = scene.camera.projection;
         scene.mainCameraParams.viewProjection = scene.mainCameraParams.projection * scene.mainCameraParams.view;
 
-        // TODO: remove this nonsense and fix the initial directional light pos/view/projection
+        // TODO: remove, temporarily here for moving the directional light manually
         if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
         {
-
-            scene.directionalLight.viewProjection = scene.mainCameraParams.viewProjection;
             scene.directionalLight.transform = scene.camera.transform;
-        }
 
-        scene.lighting.directionalLightViewProjection = scene.directionalLight.viewProjection;
-        scene.lighting.directionalLightColor = glm::vec4(scene.directionalLight.color, 0.f);
-        scene.lighting.directionalLightDir = glm::vec4(scene.directionalLight.transform.Forward(), 0.f);
+            glm::mat4 proj = glm::ortho(-3000.f, 3000.f, -1000.f, 8000.f, scene.camera.nearClippingPlane, scene.camera.farClippingPlane);
+            scene.directionalLight.viewProjection = proj * scene.camera.View();
+
+            scene.lighting.directionalLightDir = glm::vec4(scene.directionalLight.transform.Forward(), 0.f);
+            scene.lighting.directionalLightViewProjection = scene.directionalLight.viewProjection;
+        }
 
         shaders.ReloadChangedShaders();
 

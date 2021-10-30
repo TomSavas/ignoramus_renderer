@@ -6,6 +6,4 @@ in vec4 FragPos;
 
 void main()
 {
-    // Essentially this
-    //gl_FragDepth = FragPos.z / FragPos.w;
 }

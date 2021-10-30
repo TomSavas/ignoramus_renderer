@@ -31,6 +31,6 @@ layout (std140) uniform ModelParams
 
 void main()
 {
-    FragPos = model * vec4(vert_pos, 1.f);
+    FragPos = directionalLightViewProjection * model * vec4(vert_pos, 1.f);
     gl_Position = directionalLightViewProjection * model * vec4(vert_pos, 1.f);
 }

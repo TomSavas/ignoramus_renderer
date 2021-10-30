@@ -36,10 +36,10 @@ uniform sampler2D tex_diffuse;
 uniform sampler2D tex_normal;
 uniform sampler2D tex_specular;
 
-float linearizeDepth(float d, float zNear, float zFar)
+float linearizeDepth(float depth, float near, float far)
 {
-    d = 2.f * d - 1.f;
-    return 2.f * zNear * zFar / (zFar + zNear - d * (zFar - zNear));
+    depth = 2.f * depth - 1.f;
+    return 2.f * near * far / (far + near - depth * (far - near));
 }
 
 float directionalShadowIntensity(vec3 pos, vec3 normal)
@@ -57,9 +57,9 @@ float directionalShadowIntensity(vec3 pos, vec3 normal)
     float directionalAngleBias = directionalBiasAndAngleBias.y;
 
     vec3 lightToFrag = directionalLightDir.xyz;
-    float currentDepth = lightSpaceFragPos.z / farPlane;
+    float currentDepth = linearizeDepth(normalizedLightSpaceFragPos.z, nearPlane, farPlane);
 
-    float bias = max(directionalAngleBias * (1.0 - dot(normalize(normal), normalize(lightToFrag))), directionalBias) * farPlane;
+    float bias = max(directionalAngleBias * (1.0 - dot(normalize(normal), normalize(lightToFrag))), directionalBias);
 
     // PCF
     vec2 texelSize = 1.f / textureSize(shadow_map, 0);
@@ -68,7 +68,7 @@ float directionalShadowIntensity(vec3 pos, vec3 normal)
     {
         for (int y = -1; y <= 1; y++)
         {
-            float pcfDepth = linearizeDepth(texture(shadow_map, normalizedLightSpaceFragPos.xy + vec2(x, y) * texelSize).r, nearPlane, farPlane) / farPlane;
+            float pcfDepth = linearizeDepth(texture(shadow_map, normalizedLightSpaceFragPos.xy + vec2(x, y) * texelSize).r, nearPlane, farPlane);
             pcfShadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0; 
         }
     }

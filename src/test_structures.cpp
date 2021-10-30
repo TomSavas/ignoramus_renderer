@@ -8,20 +8,20 @@ Scene TestScene()
 {
     Scene scene; 
 
-    // lights
+    // Lights
     {
         scene.directionalLight.color = glm::vec3(1.f, 1.f, 1.f);
         scene.directionalLight.transform = Transform(glm::vec3(0, 12000, 0), glm::quat(0.7, 0, 0, 0.7));
-        // TODO: all sorts of messed up. Completely doesn't work
+        scene.lighting.directionalBiasAndAngleBias = glm::vec4(0.0005, 0.0005, 0, 0);
         {
-            glm::mat4 view = glm::lookAt(scene.directionalLight.transform.pos,
-                    scene.directionalLight.transform.pos + scene.directionalLight.transform.Forward(), scene.directionalLight.transform.Up());
-            glm::mat4 viewProjection = scene.camera.projection * view; // TEMP camera - change to ortho
+            glm::mat4 proj = glm::ortho(-3000.f, 3000.f, -1000.f, 8000.f, scene.camera.nearClippingPlane, scene.camera.farClippingPlane);
+            glm::mat4 view = glm::lookAt(glm::vec3(5000.f, 10000.f, 1000.f), glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
+            scene.directionalLight.viewProjection = proj * view;
+            scene.lighting.directionalLightViewProjection = scene.directionalLight.viewProjection;
 
-            scene.directionalLight.viewProjection = viewProjection;
+            scene.lighting.directionalLightDir = glm::normalize(glm::vec4(5000.f, 10000.f, 1000.f, 0.f) * -1.f);
         }
     }
-    scene.lighting.directionalBiasAndAngleBias = glm::vec4(0.000000001, 0.000000003, 0, 0);
 
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
     scene.sceneParams.wireframe = 0;
@@ -145,7 +145,6 @@ RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
-                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
     RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);

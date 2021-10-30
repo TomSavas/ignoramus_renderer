@@ -12,7 +12,7 @@
 #include "scene.h"
 #include "test_structures.h"
 
-void ShowInfo(NamedPipeline& pipeline, bool* open)
+void ShowInfo(Scene& scene, NamedPipeline& pipeline, bool* open)
 {
     const float PAD = 10.0f;
 
@@ -128,6 +128,22 @@ void ShowPipelineResources(NamedPipeline& namedPipeline, bool* open)
     ImGui::End();
 }
 
+void ShowSceneSettings(Scene& scene, bool* open)
+{
+    if (ImGui::Begin("Scene settings", open))
+    {
+        ImGui::Checkbox("Wireframe", (bool*)&scene.sceneParams.wireframe);
+
+        ImGui::SliderFloat("Gamma", &scene.sceneParams.gamma, 1, 10);
+        ImGui::SliderFloat("SpecularPower", &scene.sceneParams.specularPower, 1, 100);
+
+        ImGui::SliderFloat("Directional light shadow bias", &scene.lighting.directionalBiasAndAngleBias.x, 0.000001, 0.1, "%.6f");
+        ImGui::SliderFloat("Directional light shadow angle bias", &scene.lighting.directionalBiasAndAngleBias.y, 0.000001, 0.1, "%.6f");
+    }
+    ImGui::End();
+}
+
+
 void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int& activePipelineIndex, Scene& scene, ShaderPool& shaders)
 {
     static bool showMainMenuBar = false;
@@ -142,6 +158,7 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
     static bool showPerfMetrics = false;
     static bool showPipelineSettings = false;
     static bool showPipelineResources = false;
+    static bool showSceneSettings = false;
     static bool showInfo = true; 
     if (showMainMenuBar && ImGui::BeginMainMenuBar())
     {
@@ -157,6 +174,7 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
         ImGui::Checkbox("Perf metrics", &showPerfMetrics);
         //ImGui::Checkbox("Pipeline settings", &showPipelineSettings);
         ImGui::Checkbox("Pipeline resources", &showPipelineResources);
+        ImGui::Checkbox("Scene settings", &showSceneSettings);
         ImGui::Checkbox("Info", &showInfo);
 
         ImGui::EndMainMenuBar();
@@ -177,8 +195,13 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
         ShowPipelineResources(pipelines[activePipelineIndex], &showPipelineResources);
     }
 
+    if (showSceneSettings)
+    {
+        ShowSceneSettings(scene, &showSceneSettings);
+    }
+
     if (showInfo)
     {
-        ShowInfo(pipelines[activePipelineIndex], &showInfo);
+        ShowInfo(scene, pipelines[activePipelineIndex], &showInfo);
     }
 }
