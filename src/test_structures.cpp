@@ -68,7 +68,13 @@ Scene TestScene()
     return scene;
 }
 
-RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
+struct PipelineWithShadowmap
+{
+    RenderPipeline pipeline;
+    RenderpassAttachment* shadowmap;
+};
+
+PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
 {
     RenderPipeline pipeline;
 
@@ -83,7 +89,8 @@ RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
     RenderpassAttachment& shadowmap = directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("shadowmap", AttachmentFormat::DEPTH));
     directionalShadowmapGenPass.AddSubpass("Gen subpass", &directionalShadowmapGenShader, OPAQUE,
         {
-            SubpassAttachment(&directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("fuck you", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
+            // TODO: remove this color attachment
+            SubpassAttachment(&directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("unnecessary color", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
             SubpassAttachment(&shadowmap, SubpassAttachment::AS_DEPTH)
         });
 
@@ -98,6 +105,7 @@ RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
 
@@ -126,12 +134,12 @@ RenderPipeline UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
         });
 
-    return pipeline;
+    return { pipeline, &shadowmap };
 }
 
 RenderPipeline NoTransparencyPipeline(ShaderPool& shaders)
 {
-    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);
+    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders).pipeline;
     pipeline.AddOutputPass(shaders);
 
     assert(pipeline.ConfigureAttachments());
@@ -145,11 +153,12 @@ RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
-    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
 
-    pipeline.AddOutputPass(shaders);
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
     PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
     settings.ignoreApplication = false;
@@ -157,14 +166,16 @@ RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
     settings.enable = { GL_BLEND, };
     settings.srcBlendFactor = GL_SRC_ALPHA;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
-    Renderpass& forwardTransparencyRenderpass = pipeline.AddPass("Forward transparency pass", settings);
+    Renderpass& forwardTransparencyRenderpass = pipelineWithShadowmap.pipeline.AddPass("Forward transparency pass", settings);
     forwardTransparencyRenderpass.fbo = 0;
 
     Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subass", &forwardTransparencyShader, TRANSPARENT, 
-            {}, settings);
+            {
+                SubpassAttachment(pipelineWithShadowmap.shadowmap, SubpassAttachment::AS_TEXTURE, "shadow_map"),
+            }, settings);
 
-    assert(pipeline.ConfigureAttachments());
-    return pipeline;
+    assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
+    return pipelineWithShadowmap.pipeline;
 }
 
 RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
@@ -173,13 +184,14 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
     
-    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
 
 #define DEPTH_PASS_COUNT 6
-    Renderpass& depthPeelingPass = pipeline.AddPass("Depth peeling pass");
+    Renderpass& depthPeelingPass = pipelineWithShadowmap.pipeline.AddPass("Depth peeling pass");
     RenderpassAttachment& depthPeelingDepthA = depthPeelingPass.AddAttachment(RenderpassAttachment("depth_peel_depth_A", AttachmentFormat::DEPTH));
     RenderpassAttachment& depthPeelingDepthB = depthPeelingPass.AddAttachment(RenderpassAttachment("depth_peel_depth_B", AttachmentFormat::DEPTH));
     for (int i = 0; i < DEPTH_PASS_COUNT; i++)
@@ -197,12 +209,13 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
         Subpass& subpass = depthPeelingPass.AddSubpass(subpassName, &depthPeelingShader, TRANSPARENT,
             { 
                 SubpassAttachment(&depthPeelingPass.AddAttachment(RenderpassAttachment(outputBuffer, AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR), // Not actually necessary, just for debug purposes -- could blend into output immediatelly
-                SubpassAttachment(evenPeel ? &depthPeelingDepthA : &depthPeelingDepthB,                     SubpassAttachment::AS_DEPTH),
-                SubpassAttachment(evenPeel ? &depthPeelingDepthB : &depthPeelingDepthA,                     SubpassAttachment::AS_TEXTURE, "greater_depth"),
+                SubpassAttachment(evenPeel ? &depthPeelingDepthA : &depthPeelingDepthB, SubpassAttachment::AS_DEPTH),
+                SubpassAttachment(evenPeel ? &depthPeelingDepthB : &depthPeelingDepthA, SubpassAttachment::AS_TEXTURE, "greater_depth"),
+                SubpassAttachment(pipelineWithShadowmap.shadowmap,                      SubpassAttachment::AS_TEXTURE, "shadow_map"),
             }, peelSettings);
     }
 
-    pipeline.AddOutputPass(shaders);
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
     for (int i = DEPTH_PASS_COUNT-1; i >= 0; i--)
     {
@@ -218,7 +231,7 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
         settings.enable = { GL_BLEND };
         settings.srcBlendFactor = GL_SRC_ALPHA;
         settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
-        Renderpass& outputPass = pipeline.AddPass(name, settings);
+        Renderpass& outputPass = pipelineWithShadowmap.pipeline.AddPass(name, settings);
         outputPass.fbo = 0;
 
         Subpass& subpass = outputPass.AddSubpass(subpassName, &shaders.GetShader(SCREEN_QUAD_TEXTURE_SHADER), SCREEN_QUAD,
@@ -228,8 +241,8 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
                 }, settings);
     }
 
-    assert(pipeline.ConfigureAttachments());
-    return pipeline;
+    assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
+    return pipelineWithShadowmap.pipeline;
 }
 
 RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
@@ -244,6 +257,7 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
     Shader& dualDepthPeelingBackBlendingShader = shaders.AddShader("dual depth peeling back blending",
@@ -259,13 +273,13 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_composition.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
 
-    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
 
 #define DUAL_DEPTH_PASS_COUNT 3
 #define CLEAR_DEPTH -99999.f
 #define MIN_DEPTH 0.f
 #define MAX_DEPTH 1.f
-    Renderpass& dualDepthPeelingPass = pipeline.AddPass("Dual depth peeling pass");
+    Renderpass& dualDepthPeelingPass = pipelineWithShadowmap.pipeline.AddPass("Dual depth peeling pass");
     RenderpassAttachment& minMaxDepthA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_A", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(CLEAR_DEPTH, CLEAR_DEPTH, 0.f, 0.f))));
     RenderpassAttachment& minMaxDepthB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_B", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(-MIN_DEPTH, MAX_DEPTH, 0.f, 0.f))));
     RenderpassAttachment& frontBlenderA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("front_blender_A", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
@@ -303,6 +317,7 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
 
                 SubpassAttachment(evenPeel ? &minMaxDepthB     : &minMaxDepthA,     SubpassAttachment::AS_TEXTURE, "previousDepthBlender"),
                 SubpassAttachment(evenPeel ? &frontBlenderB    : &frontBlenderA,    SubpassAttachment::AS_TEXTURE, "previousFrontBlender"),
+                SubpassAttachment(pipelineWithShadowmap.shadowmap,                  SubpassAttachment::AS_TEXTURE, "shadow_map"),
             }, subpassSettings);
 
         char* blendingSubpassName = new char[64];
@@ -320,7 +335,7 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
             }, subpassSettings);
     }
 
-    pipeline.AddOutputPass(shaders);
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
     PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
     settings.ignoreApplication = false;
@@ -330,7 +345,7 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
     settings.srcBlendFactor = GL_SRC_ALPHA;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
 
-    Renderpass& dualDepthPeelingCompositionPass = pipeline.AddPass("Dual depth peeling composition pass", settings);
+    Renderpass& dualDepthPeelingCompositionPass = pipelineWithShadowmap.pipeline.AddPass("Dual depth peeling composition pass", settings);
     dualDepthPeelingCompositionPass.fbo = 0;
 
     dualDepthPeelingCompositionPass.AddSubpass("Dual depth peeling composition subpass", &dualDepthPeelingCompositionShader, SCREEN_QUAD,
@@ -340,8 +355,8 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
                 SubpassAttachment(&finalBackBlender, SubpassAttachment::AS_TEXTURE, "backBlender"),
             }, settings);
 
-    assert(pipeline.ConfigureAttachments());
-    return pipeline;
+    assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
+    return pipelineWithShadowmap.pipeline;
 }
 
 std::vector<NamedPipeline> TestPipelines(ShaderPool& shaders)

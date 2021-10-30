@@ -4,6 +4,9 @@ layout (location = 1) in vec3 vert_norm;
 layout (location = 2) in vec3 vert_tan;
 layout (location = 3) in vec2 vert_uv;
 
+out vec3 Pos;
+out vec3 Normal;
+
 layout (std140) uniform CameraParams
 {
     mat4 view;
@@ -20,5 +23,8 @@ layout (std140) uniform ModelParams
 
 void main()
 {
+    Pos = vert_pos;
+    Normal = vert_norm;
+
     gl_Position = viewProjection * model * vec4(vert_pos, 1.f);
 }

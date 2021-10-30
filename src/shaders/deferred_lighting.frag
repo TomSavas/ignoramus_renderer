@@ -77,29 +77,25 @@ float directionalShadowIntensity(vec3 pos, vec3 normal)
     return shadow;
 }
 
+vec3 calculateDiffuse(vec3 color, vec3 normal, vec3 lightDir);
+vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity, float specularPower);
+vec3 composeColor(float ambientIntensity, float shadowIntensity, vec3 ambientColor, vec3 diffuse, vec3 specular);
+vec3 gammaCorrect(vec3 color, float gamma);
+
 const float ambientIntensity = 0.1;
 void main()
 {
     vec2 fragmentPos = gl_FragCoord.xy / vec2(viewportWidth, viewportHeight);
 
     vec3 pos = texture(tex_pos, fragmentPos).xyz;
-    vec3 diffuse = texture(tex_diffuse, fragmentPos).rgb;
+    vec3 color = texture(tex_diffuse, fragmentPos).rgb;
     vec3 normal = texture(tex_normal, fragmentPos).xyz;
-    float specular = texture(tex_specular, fragmentPos).r;
+    float specularity = texture(tex_specular, fragmentPos).r;
 
-    vec3 ambientIntensityColor = diffuse * ambientIntensity;
-    vec3 diffuseIntensityColor = diffuse * max(0.f, dot(normal.xyz, -directionalLightDir.xyz));
-
-    vec3 cameraToFrag = normalize(pos - cameraPos.xyz);
-    float specularIntensity = pow(max(dot(cameraToFrag, reflect(-directionalLightDir.xyz, normal)), 0.f), specular * specularPower);
-    vec3 specularIntensityColor = diffuse * specularIntensity;
-
+    vec3 diffuse = calculateDiffuse(color, normal, directionalLightDir.xyz);
+    vec3 specular = calculateSpecular(color, pos, normal, cameraPos.xyz, directionalLightDir.xyz, specularity, specularPower);
     float shadowIntensity = directionalShadowIntensity(pos, normal);
-    float lightIntensity = (1.f - shadowIntensity);
-    vec3 litColor = lightIntensity * (diffuseIntensityColor + specularIntensityColor);
 
-    vec3 color = ambientIntensityColor + litColor * (1.0 - ambientIntensity);
-
-    // Gamma correction
-    fragColor = pow(color, vec3(1.f / gamma));
+    vec3 uncorrectedColor = composeColor(ambientIntensity, shadowIntensity, color, diffuse, specular);
+    fragColor = gammaCorrect(uncorrectedColor, gamma);
 }
