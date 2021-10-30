@@ -5,6 +5,20 @@
 
 #include "glm/gtx/transform.hpp"
 
+#include "log.h"
+
+const float speedStep = 0.3f;
+static float speed = speedStep * 20;
+void updateCameraSpeed(GLFWwindow* window, double xOffset, double yOffset)
+{
+    speed += yOffset * speedStep;
+
+    if (speed < speedStep)
+    {
+        speed = speedStep;
+    }
+}
+
 Camera::Camera(float verticalFOV,
         float aspectRatio)
     : verticalFOV(verticalFOV), aspectRatio(aspectRatio),
@@ -16,6 +30,13 @@ Camera::Camera(float verticalFOV,
 
 void Camera::Update(GLFWwindow *window)
 {
+    static bool scrollCallbackSet = false;
+    if (!scrollCallbackSet)
+    {
+        glfwSetScrollCallback(window, updateCameraSpeed);
+        scrollCallbackSet = true;
+    }
+
     // adapt ue4's pie controls
 
     // looking
@@ -66,7 +87,7 @@ void Camera::Update(GLFWwindow *window)
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         moveDir -= transform.Up();
 
-    moveDir *= glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ? 10.f : 4.f;
+    moveDir *= (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ? 10.f : 4.f) * speed;
 
     transform.pos += moveDir;
 }
