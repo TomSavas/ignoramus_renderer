@@ -60,7 +60,7 @@ void Camera::Update(GLFWwindow *window)
         while(radToVertical < -glm::pi<float>() * 2)
             radToVertical += glm::pi<float>() * 2;
 
-        radToHorizon += mousePosDif.y * 0.005f;
+        radToHorizon -= mousePosDif.y * 0.005f;
         radToHorizon = std::min(std::max(radToHorizon, -glm::pi<double>() / 2 + 0.01), glm::pi<double>() / 2 - 0.01);
 
         transform.rot = glm::quat(glm::vec3(radToHorizon, -radToVertical, 0.f));

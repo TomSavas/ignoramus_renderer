@@ -14,7 +14,7 @@ glm::mat4 Transform::Model()
 
 glm::vec3 Transform::Forward()
 {
-    return toMat4(rot) * glm::vec4(0.f, 0.f, 1.f, 0.f);
+    return toMat4(rot) * glm::vec4(0.f, 0.f, -1.f, 0.f);
 }
 
 glm::vec3 Transform::Up()
@@ -24,6 +24,5 @@ glm::vec3 Transform::Up()
 
 glm::vec3 Transform::Right()
 {
-    // TODO: shouldn't it be 1?
-    return toMat4(rot) * glm::vec4(-1.f, 0.f, 0.f, 0.f);
+    return toMat4(rot) * glm::vec4(1.f, 0.f, 0.f, 0.f);
 }
