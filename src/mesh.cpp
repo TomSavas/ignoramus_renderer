@@ -124,10 +124,39 @@ void Mesh::Render(Shader &shader)
     // Hmm, there should be some sort of communication between the shader and model here.
     // Shader dictates what textures it needs, the model provides them
     bool usingNormalMap = false;
+
+    // TEMP: quick lookup if the texture needs to be bound
+    std::unordered_set<std::string> textureUniformNames;
+    {
+        int unused;
+        GLenum type;
+        char uniformName[128];
+        int count = 0;
+        glGetProgramiv(shader.id, GL_ACTIVE_UNIFORMS, &count);
+
+        for (int i = 0; i < count; i++)
+        {
+            glGetActiveUniform(shader.id, i, sizeof(uniformName), &unused, &unused, &type, uniformName);
+
+            bool isTexture = type == GL_SAMPLER_1D || type == GL_SAMPLER_2D || type == GL_SAMPLER_3D;
+            if (!isTexture)
+            {
+                continue;
+            }
+
+            textureUniformNames.insert(std::string(uniformName));
+        }
+    }
+
     for (std::pair<std::string, std::string> nameToPath : textures)
     {
         if (!usingNormalMap && nameToPath.first.compare("tex_normal") == 0)
             usingNormalMap = true;
+
+        if (textureUniformNames.find(nameToPath.first) == textureUniformNames.end())
+        {
+            continue;
+        }
 
         Texture *t = GetTexture(nameToPath.second);
 
