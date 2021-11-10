@@ -10,7 +10,8 @@ vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 l
     vec3 cameraToFrag = normalize(pos - cameraPos.xyz);
     float specularIntensity = pow(max(dot(cameraToFrag, reflect(-lightDir, normal)), 0.f), 1 / specularity * specularPower);
 
-    return color * specularIntensity;
+    // TODO: change this to the light color
+    return vec3(1.f, 1.f, 1.f) * specularIntensity;
 }
 
 vec3 composeColor(float ambientIntensity, float shadowIntensity, vec3 ambientColor, vec3 diffuse, vec3 specular)
