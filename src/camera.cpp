@@ -9,6 +9,7 @@
 
 const float speedStep = 0.3f;
 static float speed = speedStep * 20;
+static GLFWscrollfun previousScrollCallback = nullptr;
 void updateCameraSpeed(GLFWwindow* window, double xOffset, double yOffset)
 {
     speed += yOffset * speedStep;
@@ -16,6 +17,11 @@ void updateCameraSpeed(GLFWwindow* window, double xOffset, double yOffset)
     if (speed < speedStep)
     {
         speed = speedStep;
+    }
+
+    if (previousScrollCallback != nullptr)
+    {
+        previousScrollCallback(window, xOffset, yOffset);
     }
 }
 
@@ -33,7 +39,7 @@ void Camera::Update(GLFWwindow *window)
     static bool scrollCallbackSet = false;
     if (!scrollCallbackSet)
     {
-        glfwSetScrollCallback(window, updateCameraSpeed);
+        previousScrollCallback = glfwSetScrollCallback(window, updateCameraSpeed);
         scrollCallbackSet = true;
     }
 
