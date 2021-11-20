@@ -3,6 +3,7 @@
 #include "model.h"
 #include "mesh.h"
 #include "material.h"
+#include "log.h"
 
 Scene TestScene() 
 {
@@ -29,9 +30,11 @@ Scene TestScene()
     scene.sceneParams.viewportWidth = 1920.f;
     scene.sceneParams.viewportHeight = 1080.f;
 
-    Model transparentModel = Model("../assets/dragon.obj");
+    //Model transparentModel = Model("../assets/dragon.obj");
+    Model backpack = Model("../assets/dragon.obj");
     Model sponza = Model("../assets/sponza/sponza.obj");
-    Model backpack = Model("../assets/backpack/backpack.obj");
+    //Model backpack = Model("../assets/backpack/backpack.obj");
+    //Model backpack = Model("../assets/sphere/sphere.obj");
     Material* opaqueMat = new OpaqueMaterial();
     for (auto& mesh : sponza.meshes)
     {
@@ -41,6 +44,7 @@ Scene TestScene()
     for (auto& mesh : backpack.meshes)
     {
         mesh.transform = Transform(glm::vec3(500.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(75.f, 75.f, 75.f));
+        //mesh.transform = Transform(glm::vec3(500.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(2.f, 2.f, 2.f));
         scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
     }
 
@@ -53,13 +57,13 @@ Scene TestScene()
     TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.7f);
     redTransparentMat->Bind();
     redTransparentMat->UpdateData();
-    for (auto& mesh : transparentModel.meshes)
+    for (auto& mesh : backpack.meshes)
     {
-        mesh.transform = Transform(glm::vec3(0.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(750.f, 750.f, 750.f));
+        mesh.transform = Transform(glm::vec3(0.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(750.f, 750.f, 750.f));
+        mesh.transform = Transform(glm::vec3(500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(750.f, 750.f, 750.f));
+        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
     }
 
@@ -109,13 +113,15 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
                 ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
 
-    Renderpass& deferredLightingPass = pipeline.AddPass("Deferred lighting pass");
+#define DEFERRED_PASS "Deferred pass"
+    Renderpass& deferredLightingPass = pipeline.AddPass(DEFERRED_PASS);
     RenderpassAttachment& deferredDepth    = deferredLightingPass.AddAttachment(RenderpassAttachment("g_depth",    AttachmentFormat::DEPTH));
     RenderpassAttachment& deferredPosition = deferredLightingPass.AddAttachment(RenderpassAttachment("g_position", AttachmentFormat::FLOAT_3));
     RenderpassAttachment& deferredNormal   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_normal",   AttachmentFormat::FLOAT_3));
     RenderpassAttachment& deferredAlbedo   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_albedo",   AttachmentFormat::FLOAT_3));
     RenderpassAttachment& deferredSpecular = deferredLightingPass.AddAttachment(RenderpassAttachment("g_specular", AttachmentFormat::FLOAT_3));
-    deferredLightingPass.AddSubpass("Geometry subpass", &geometryShader, OPAQUE,
+#define GEOMETRY_SUBPASS "Geometry subpass"
+    deferredLightingPass.AddSubpass(GEOMETRY_SUBPASS, &geometryShader, OPAQUE,
         {
             SubpassAttachment(&deferredDepth,    SubpassAttachment::AS_DEPTH),
             SubpassAttachment(&deferredPosition, SubpassAttachment::AS_COLOR),
@@ -123,7 +129,8 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_COLOR),
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_COLOR),
         });
-    deferredLightingPass.AddSubpass("Composition-lighting subpass", &deferredLightingShader, SCREEN_QUAD,
+#define COMPOSITION_LIGHTING_SUBPASS "Composition-lighting subpass"
+    deferredLightingPass.AddSubpass(COMPOSITION_LIGHTING_SUBPASS, &deferredLightingShader, SCREEN_QUAD,
         {
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
             SubpassAttachment(&deferredLightingPass.AddOutputAttachment(), SubpassAttachment::AS_COLOR),
@@ -359,6 +366,100 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
     return pipelineWithShadowmap.pipeline;
 }
 
+RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
+{
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
+
+    // TODO: This is absolutely positively horrible. The pipeline should either be smart enough to figure out where the pass/subpass
+    // can be inserted. Or there should at least be a better mechanism for inserting passes / subpasses.
+    Renderpass* deferredPass = nullptr;
+    Subpass* compositionSubpass = nullptr;
+    int geometrySubpassIndex = -1;
+    for (int i = 0; i < pipelineWithShadowmap.pipeline.passes.size() && deferredPass == nullptr; i++)
+    {
+        Renderpass* pass = pipelineWithShadowmap.pipeline.passes[i];
+        if (pass == nullptr || strcmp(pass->name, DEFERRED_PASS) != 0)
+        {
+            continue;
+        }
+
+        deferredPass = pass;
+        for (int j = 0; j < pass->subpasses.size() && (compositionSubpass == nullptr || geometrySubpassIndex == -1); j++)
+        {
+            Subpass* subpass = pass->subpasses[j];
+            bool isGeometryPass = strcmp(subpass->name, GEOMETRY_SUBPASS) == 0;
+            bool isCompositionPass = strcmp(subpass->name, COMPOSITION_LIGHTING_SUBPASS) == 0;
+            if (subpass == nullptr || !(isGeometryPass || isCompositionPass))
+            {
+                continue;
+            }
+
+            if (isGeometryPass)
+            {
+                geometrySubpassIndex = j;
+            }
+
+            if (isCompositionPass)
+            {
+                compositionSubpass = subpass;
+            }
+        }
+    }
+
+    RenderpassAttachment& transparencyPPLLHeadIndices = deferredPass->AddAttachment(RenderpassAttachment("ppllHeads", AttachmentFormat::UINT_1));
+    long fragmentDataSize = sizeof(glm::vec4) * 4; //color + packed(depth + next)
+    long maxTransparencyLayers = 16;
+    long linkedListSize = 1920 * 1080 * maxTransparencyLayers * fragmentDataSize;
+    LOG_ERROR("", "linked list size: %d", linkedListSize);
+    RenderpassAttachment& transparencyPPLL = deferredPass->AddAttachment(RenderpassAttachment::SSBO("transparencyPPLL", linkedListSize));
+    RenderpassAttachment& atomicTransparencyFragments = deferredPass->AddAttachment(RenderpassAttachment::AtomicCounter("atomicTransparencyFragments"));
+
+    Shader& transparentGeometryShader = shaders.AddShader("transparent_geometry",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "transparency_geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+
+
+    //PassSettings transparentGeometryPassSettings = PassSettings::DefaultRenderpassSettings();
+    PassSettings transparentGeometryPassSettings = PassSettings::DefaultSubpassSettings();
+    transparentGeometryPassSettings.ignoreApplication = false;
+    transparentGeometryPassSettings.enable = { GL_BLEND };
+    transparentGeometryPassSettings.depthMask = GL_FALSE;
+    transparentGeometryPassSettings.clearColor = glm::vec4(0.5f, 0.5f, 0.5f, 1.f);
+    deferredPass->InsertSubpass(geometrySubpassIndex + 1, "transparent geometry pass", &transparentGeometryShader, TRANSPARENT,
+        {
+            //SubpassAttachment(&deferredPass->AddOutputAttachment(), SubpassAttachment::AS_COLOR),
+
+            // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
+            SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL")),
+            SubpassAttachment(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments")),
+            SubpassAttachment(pipelineWithShadowmap.shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
+        }, transparentGeometryPassSettings);
+
+    Shader& deferredLightingWithTransparencyShader = shaders.AddShader("deferred lighting with transparency",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "deferred_lighting_with_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    // Replace the existing composition shader with a one respecting transparency
+    compositionSubpass->shader = &deferredLightingWithTransparencyShader;
+    // Add transparency data
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments"));
+
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
+
+    assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
+    return pipelineWithShadowmap.pipeline;
+}
+
 std::vector<NamedPipeline> TestPipelines(ShaderPool& shaders)
 {
     return 
@@ -367,5 +468,6 @@ std::vector<NamedPipeline> TestPipelines(ShaderPool& shaders)
             { "Unsorted forward transparency", UnsortedForwardTransparencyPipeline(shaders) },
             { "Depth peeling", DepthPeelingPipeline(shaders) },
             { "Dual depth peeling", DualDepthPeelingPipeline(shaders) },
+            { "A-Buffer OIT: PPLL", ABufferPPLLPipeline(shaders) },
         };
 }
