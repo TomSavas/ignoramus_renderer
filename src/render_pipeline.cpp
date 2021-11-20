@@ -8,6 +8,8 @@ GLenum ToGLInternalFormat(AttachmentFormat format)
 {
     switch (format)
     {
+        case AttachmentFormat::UINT_1:
+            return GL_R32UI;
         case AttachmentFormat::FLOAT_1:
             return GL_R32F;
         case AttachmentFormat::FLOAT_2:
@@ -20,6 +22,10 @@ GLenum ToGLInternalFormat(AttachmentFormat format)
             return GL_DEPTH_COMPONENT32F;
         case AttachmentFormat::DEPTH_STENCIL:
             return GL_DEPTH24_STENCIL8;
+        case AttachmentFormat::SSBO:
+            return GL_SHADER_STORAGE_BUFFER;
+        case AttachmentFormat::ATOMIC_COUNTER:
+            return GL_ATOMIC_COUNTER_BUFFER;
         default:
             LOG_ERROR(__func__, "Cannot convert AttachmentFormat to GL internal format. Invalid format: %d", format);
             return GL_RGBA32F;
@@ -30,6 +36,8 @@ GLenum ToGLFormat(AttachmentFormat format)
 {
     switch (format)
     {
+        case AttachmentFormat::UINT_1:
+            return GL_RED_INTEGER;
         case AttachmentFormat::FLOAT_1:
             return GL_RED;
         case AttachmentFormat::FLOAT_2:
@@ -52,6 +60,8 @@ GLenum ToGLType(AttachmentFormat format)
 {
     switch (format)
     {
+        case AttachmentFormat::UINT_1:
+            return GL_UNSIGNED_INT;
         case AttachmentFormat::FLOAT_1:
         case AttachmentFormat::FLOAT_2:
         case AttachmentFormat::FLOAT_3:
@@ -141,10 +151,18 @@ void PassSettings::Apply(PassSettings& previousSettings)
 
 // -------------------------------------------------------------------------------------------------
 
+static unsigned int clearBuffer;
 RenderPipeline::RenderPipeline()
 {
     glGenBuffers(1, &materialUbo);
     glGenQueries(1, &timeQuery);
+
+    // TEMP
+    std::vector<GLuint> headClear(1920 * 1080, 0xffffffff);
+    glGenBuffers(1, &clearBuffer);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, clearBuffer);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, headClear.size() * sizeof(GLuint), headClear.data(), GL_STATIC_COPY);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 Renderpass& RenderPipeline::AddPass(const char* name, PassSettings passSettings)
@@ -209,32 +227,68 @@ bool ConfigureRenderpassAttachments(Renderpass& pass)
     // but for now it's just a waste of time to do so
     ASSERT(renderpassColorAttachments.size() <= maxColorAttachments);
 
-    // For now everything's a texture. Later on we can separate things into textures and renderbuffers
-    std::vector<unsigned int> texIds(pass.attachments.size());
-    glGenTextures(texIds.size(), texIds.data());
+    int textureCount = 0;
+    int bufferCount = 0;
+    for (int i = 0; i < pass.attachments.size(); i++)
+    {
+        ASSERT(pass.attachments[i] != nullptr);
+        switch (pass.attachments[i]->format)
+        {
+            case AttachmentFormat::SSBO:
+            case AttachmentFormat::ATOMIC_COUNTER:
+                bufferCount++;
+                break;
+            default:
+                textureCount++;
+                break;
+        }
+    }
+
+    int usedTextureCount = 0;
+    std::vector<unsigned int> texIds(textureCount);
+    glGenTextures(textureCount, texIds.data());
+
+    int usedBufferCount = 0;
+    std::vector<unsigned int> bufferIds(bufferCount);
+    glGenBuffers(bufferCount, bufferIds.data());
+
     for (int i = 0; i < pass.attachments.size(); i++)
     {
         ASSERT(pass.attachments[i] != nullptr);
         RenderpassAttachment& attachment = *pass.attachments[i];
-        attachment.id = texIds[i];
 
-        // Again, everything's a texture for now, no cubemaps or anything
-        glBindTexture(GL_TEXTURE_2D, attachment.id);
-        // TODO: fix hardcoded resolution and parameters
-        glTexImage2D(GL_TEXTURE_2D, 0, ToGLInternalFormat(attachment.format), 1920, 1080, 0, ToGLFormat(attachment.format), ToGLType(attachment.format), NULL);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        if (attachment.format == AttachmentFormat::DEPTH)
+        switch (attachment.format)
         {
-            glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
+            case AttachmentFormat::SSBO:
+            case AttachmentFormat::ATOMIC_COUNTER:
+                attachment.id = bufferIds[usedBufferCount++];
 
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+                glBindBuffer(ToGLInternalFormat(attachment.format), attachment.id);
+                // TODO: dynamic draw should be configurable...
+                glBufferData(ToGLInternalFormat(attachment.format), attachment.size, NULL, GL_DYNAMIC_DRAW);
+                break;
+            default:
+                attachment.id = texIds[usedTextureCount++];
 
-            const float darkBorder[] = { 0.f, 0.f, 0.f, 0.f };
-            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, darkBorder);
+                // Again, everything's a texture for now, no cubemaps or anything
+                glBindTexture(GL_TEXTURE_2D, attachment.id);
+                // TODO: fix hardcoded resolution and parameters
+                glTexImage2D(GL_TEXTURE_2D, 0, ToGLInternalFormat(attachment.format), 1920, 1080, 0, ToGLFormat(attachment.format), ToGLType(attachment.format), NULL);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+                if (attachment.format == AttachmentFormat::DEPTH)
+                {
+                    glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
+
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+                    const float darkBorder[] = { 0.f, 0.f, 0.f, 0.f };
+                    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, darkBorder);
+                }
+                break;
         }
     }
 
@@ -327,10 +381,16 @@ bool RenderPipeline::ConfigureAttachments()
 
 Subpass& Renderpass::AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings)
 {
+    return InsertSubpass(subpasses.size(), name, shader, acceptedMeshTags, attachments, passSettings);;
+}
+
+Subpass& Renderpass::InsertSubpass(int index, const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings)
+{
     Subpass* subpass = new Subpass { name, shader, acceptedMeshTags, attachments, passSettings };
-    subpasses.push_back(subpass);
+    subpasses.insert(subpasses.begin() + index, subpass);
 
     return *subpass;
+    
 }
 
 Subpass& Renderpass::AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<RenderpassAttachment*> attachments, SubpassAttachment::AttachType typeForAllAttachments, PassSettings passSettings)
@@ -397,6 +457,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
     for (int i = 0; i < passes.size(); i++)
     {
         int activatedTextureCount = 0;
+        int activatedImageCount = 0;
         ASSERT(passes[i] != nullptr);
         Renderpass& renderpass = *passes[i];
 
@@ -460,6 +521,12 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                 continue;
             }
 
+            if (strcmp(subpass.name, "Composition-lighting subpass") == 0 || strcmp(subpass.name, "sorting subpass") == 0)
+            {
+                LOG_DEBUG("Barrier", "waiting for barrier");
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            }
+
             clock_t subpassStartTime = clock();
             glBeginQuery(GL_TIME_ELAPSED, timeQuery);
 
@@ -484,6 +551,39 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         glActiveTexture(GL_TEXTURE0 + activatedTextureCount);
                         subpass.shader->SetUniform(subpassAttachment.useFor, activatedTextureCount++);
                         glBindTexture(GL_TEXTURE_2D, attachmentId);
+                        break;
+                    case SubpassAttachment::AS_IMAGE:
+                        // TODO: add ability to make this read/write only
+
+                        // TEMP clear
+                        if (strcmp(subpass.name, "transparent geometry pass") == 0)
+                        {
+                            LOG_DEBUG("clear", "clearing image");
+                            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, clearBuffer);
+                            glBindTexture(GL_TEXTURE_2D, attachmentId);
+                            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_RED_INTEGER, GL_UNSIGNED_INT, NULL);
+                            glBindTexture(GL_TEXTURE_2D, 0);
+                            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+                        }
+
+                        glBindImageTexture(activatedImageCount++, attachmentId, 0, GL_FALSE, 0, GL_READ_WRITE, ToGLInternalFormat(subpassAttachment.renderpassAttachment->format));
+                        break;
+                    case SubpassAttachment::AS_SSBO:
+                        //LOG_WARN("Fix me", "We should not be binding to 0...");
+                        glBindBufferBase(ToGLInternalFormat(subpassAttachment.renderpassAttachment->format), 2, attachmentId);
+                        break;
+                    case SubpassAttachment::AS_ATOMIC_COUNTER:
+                        //LOG_WARN("Fix me", "We should not be binding to 0...");
+                        glBindBufferBase(ToGLInternalFormat(subpassAttachment.renderpassAttachment->format), 1, attachmentId);
+
+                        // TEMP clear
+                        if (strcmp(subpass.name, "transparent geometry pass") == 0)
+                        {
+                            LOG_DEBUG("clear", "clearing counter");
+                            static GLuint zero = 0;
+                            glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &zero);
+                        }
+
                         break;
                     case SubpassAttachment::AS_BLIT:
                         ASSERT(false);

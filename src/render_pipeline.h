@@ -11,12 +11,16 @@
 
 enum class AttachmentFormat
 {
+    UINT_1,
     FLOAT_1,
     FLOAT_2,
     FLOAT_3,
     FLOAT_4,
     DEPTH,
-    DEPTH_STENCIL
+    DEPTH_STENCIL,
+
+    SSBO,
+    ATOMIC_COUNTER,
 };
 GLenum ToGLInternalFormat(AttachmentFormat format);
 GLenum ToGLFormat(AttachmentFormat format);
@@ -38,10 +42,28 @@ struct RenderpassAttachment
 
     bool hasSeparateClearOpts;
     AttachmentClearOpts clearOpts;
+    long size;
 
     RenderpassAttachment() {}
     RenderpassAttachment(const char* name, AttachmentFormat format) : name(name), format(format), hasSeparateClearOpts(false), attachmentIndex(INVALID_ATTACHMENT_INDEX) {}
     RenderpassAttachment(const char* name, AttachmentFormat format, AttachmentClearOpts clearOpts) : name(name), format(format), clearOpts(clearOpts), hasSeparateClearOpts(true), attachmentIndex(INVALID_ATTACHMENT_INDEX) {}
+
+    // TODO: remake so that each enum param has a separate "constructor"
+    static RenderpassAttachment SSBO(const char* name, long size) 
+    {
+        RenderpassAttachment attachment(name, AttachmentFormat::SSBO);
+        attachment.size = size;
+
+        return attachment;
+    }
+
+    static RenderpassAttachment AtomicCounter(const char* name) 
+    {
+        RenderpassAttachment attachment(name, AttachmentFormat::ATOMIC_COUNTER);
+        attachment.size = sizeof(GLuint);
+
+        return attachment;
+    }
 
     unsigned int id;
 };
@@ -82,7 +104,11 @@ struct SubpassAttachment
         AS_COLOR,
         AS_DEPTH,
         AS_TEXTURE,
-        AS_BLIT
+        AS_BLIT,
+
+        AS_IMAGE,
+        AS_SSBO,
+        AS_ATOMIC_COUNTER
     };
 
     RenderpassAttachment* renderpassAttachment;
@@ -126,6 +152,7 @@ struct Renderpass
     Renderpass(const char* name, PassSettings settings) : name(name), settings(settings), outputAttachment(nullptr), fbo(GL_INVALID_VALUE) {}
 
     Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
+    Subpass& InsertSubpass(int index, const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
     Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<RenderpassAttachment*> attachments, SubpassAttachment::AttachType typeForAllAttachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
 
     RenderpassAttachment& AddAttachment(RenderpassAttachment attachment);
