@@ -521,9 +521,9 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                 continue;
             }
 
+            // TEMP
             if (strcmp(subpass.name, "Composition-lighting subpass") == 0 || strcmp(subpass.name, "sorting subpass") == 0)
             {
-                LOG_DEBUG("Barrier", "waiting for barrier");
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
             }
 
@@ -558,7 +558,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         // TEMP clear
                         if (strcmp(subpass.name, "transparent geometry pass") == 0)
                         {
-                            LOG_DEBUG("clear", "clearing image");
+                            //LOG_DEBUG("clear", "clearing image");
                             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, clearBuffer);
                             glBindTexture(GL_TEXTURE_2D, attachmentId);
                             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_RED_INTEGER, GL_UNSIGNED_INT, NULL);
@@ -579,7 +579,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         // TEMP clear
                         if (strcmp(subpass.name, "transparent geometry pass") == 0)
                         {
-                            LOG_DEBUG("clear", "clearing counter");
+                            //LOG_DEBUG("clear", "clearing counter");
                             static GLuint zero = 0;
                             glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &zero);
                         }

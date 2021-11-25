@@ -57,7 +57,7 @@ layout (binding = 2, std430) buffer TransparentFragments
 
 void main()
 {    
-    const int maxTransparencyLayers = 4;
+    const int maxTransparencyLayers = 8;
     const int linkedListSize = 1920 * 1080 * maxTransparencyLayers;
     if (atomicCounter(transparentFragmentCount) >= linkedListSize)
     {
