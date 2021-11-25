@@ -31,39 +31,57 @@ Scene TestScene()
     scene.sceneParams.viewportHeight = 1080.f;
 
     //Model transparentModel = Model("../assets/dragon.obj");
-    Model backpack = Model("../assets/dragon.obj");
+    Model dragon = Model("../assets/dragon.obj");
     Model sponza = Model("../assets/sponza/sponza.obj");
     //Model backpack = Model("../assets/backpack/backpack.obj");
-    //Model backpack = Model("../assets/sphere/sphere.obj");
+    Model sphere = Model("../assets/sphere/sphere.obj");
     Material* opaqueMat = new OpaqueMaterial();
     for (auto& mesh : sponza.meshes)
     {
         mesh.transform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(5.f, 5.f, 5.f));
         scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
     }
-    for (auto& mesh : backpack.meshes)
-    {
-        mesh.transform = Transform(glm::vec3(500.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(75.f, 75.f, 75.f));
-        //mesh.transform = Transform(glm::vec3(500.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(2.f, 2.f, 2.f));
-        scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
-    }
 
-    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.2f);
+    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.15f);
     blueTransparentMat->Bind();
     blueTransparentMat->UpdateData();
-    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.4f);
+    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.35f);
     greenTransparentMat->Bind();
     greenTransparentMat->UpdateData();
-    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.7f);
+    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.6f);
     redTransparentMat->Bind();
     redTransparentMat->UpdateData();
-    for (auto& mesh : backpack.meshes)
+    for (auto& mesh : dragon.meshes)
     {
         mesh.transform = Transform(glm::vec3(0.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
         mesh.transform = Transform(glm::vec3(500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
         mesh.transform = Transform(glm::vec3(-500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+    }
+
+    for (auto& mesh : sphere.meshes)
+    {
+        mesh.transform = Transform(glm::vec3(500.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(0.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+
+        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+
+        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
     }
 
@@ -407,10 +425,10 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
     }
 
     RenderpassAttachment& transparencyPPLLHeadIndices = deferredPass->AddAttachment(RenderpassAttachment("ppllHeads", AttachmentFormat::UINT_1));
-    long fragmentDataSize = sizeof(glm::vec4) * 4; //color + packed(depth + next)
-    long maxTransparencyLayers = 16;
+    long fragmentDataSize = sizeof(glm::vec4) * 3;
+    long maxTransparencyLayers = 8;
     long linkedListSize = 1920 * 1080 * maxTransparencyLayers * fragmentDataSize;
-    LOG_ERROR("", "linked list size: %d", linkedListSize);
+    LOG_WARN("", "linked list size: %d MB", linkedListSize / (1024 * 1024));
     RenderpassAttachment& transparencyPPLL = deferredPass->AddAttachment(RenderpassAttachment::SSBO("transparencyPPLL", linkedListSize));
     RenderpassAttachment& atomicTransparencyFragments = deferredPass->AddAttachment(RenderpassAttachment::AtomicCounter("atomicTransparencyFragments"));
 
@@ -439,6 +457,21 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
             SubpassAttachment(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments")),
             SubpassAttachment(pipelineWithShadowmap.shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
         }, transparentGeometryPassSettings);
+
+    Shader& transparencySortingShader = shaders.AddShader("transparency ppll sorting",
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "ppll_depth_sort.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    deferredPass->InsertSubpass(geometrySubpassIndex + 2, "sorting subpass", &transparencySortingShader, SCREEN_QUAD,
+        {
+            SubpassAttachment(&deferredPass->AddAttachment(RenderpassAttachment("sort test output", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL")),
+            SubpassAttachment(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments")),
+        }, PassSettings::DefaultSubpassSettings());
 
     Shader& deferredLightingWithTransparencyShader = shaders.AddShader("deferred lighting with transparency",
         ShaderDescriptor(
