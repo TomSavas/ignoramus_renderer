@@ -73,6 +73,13 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
 
         convertedVertices[idx+ 9] = mesh.Vertices[i].TextureCoordinate.X;
         convertedVertices[idx+10] = mesh.Vertices[i].TextureCoordinate.Y;
+
+        aabbModelSpace.min = glm::vec3(glm::min(aabbModelSpace.min.x, mesh.Vertices[i].Position.X),
+                glm::min(aabbModelSpace.min.y, mesh.Vertices[i].Position.Y),
+                glm::min(aabbModelSpace.min.z, mesh.Vertices[i].Position.Z));
+        aabbModelSpace.max = glm::vec3(glm::max(aabbModelSpace.max.x, mesh.Vertices[i].Position.X),
+                glm::max(aabbModelSpace.max.y, mesh.Vertices[i].Position.Y),
+                glm::max(aabbModelSpace.max.z, mesh.Vertices[i].Position.Z));
     }
 
     VertexBuffer vertexBuffer (convertedVertices, convertedVerticesElementCount * mesh.Vertices.size());

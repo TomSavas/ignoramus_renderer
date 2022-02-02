@@ -643,11 +643,17 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
             subpass.shader->AddDummyForUnboundTextures(dummyTextureUnit);
             for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
             {
+                glm::mat4 model = meshWithMaterial.mesh.transform.Model();
+                bool fullyOutsideViewFrustum = meshWithMaterial.mesh.aabbModelSpace.ViewFrustumIntersect(scene.camera.MVP(model));
+                if (fullyOutsideViewFrustum && subpass.acceptedMeshTags != SCREEN_QUAD)
+                {
+                    continue;
+                }
+                
                 // TODO: not necessary if already bound
                 //       even if bound and changed can only partially update
                 meshWithMaterial.material->Bind();
 
-                glm::mat4 model = meshWithMaterial.mesh.transform.Model();
                 glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
                 glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);
                 //glBindBuffer(GL_UNIFORM_BUFFER, 0);

@@ -8,6 +8,7 @@
 #include "texture.h"
 #include "vertex_array.h"
 #include "transform.h"
+#include "aabb.h"
 
 enum MeshTag
 {
@@ -23,6 +24,7 @@ struct Mesh
 {
     MeshTag meshTag;
     VertexArray vertexArray;
+    AABB aabbModelSpace;
 
     Mesh(objl::Mesh &mesh, MeshTag tag = OPAQUE, std::vector<std::pair<std::string, std::string>> overrideTexturesWithPaths = std::vector<std::pair<std::string, std::string>>());
     void Render(Shader &shader);
