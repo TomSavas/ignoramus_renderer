@@ -440,6 +440,29 @@ RenderpassAttachment& Renderpass::AddOutputAttachment()
     return *outputAttachment;   
 }
 
+void Renderpass::AddDefine(const char* define, const char* value)
+{
+    unsigned long hash = Djb2((const unsigned char*) define);
+    defines[hash] = (ShaderDescriptor::Define) { define, value };
+}
+
+void Renderpass::AddDefine(const char* define, int value)
+{
+    // Mem leak, I know - too bad!
+    char* valueStr = (char*) malloc(sizeof(char) * 8);
+    sprintf(valueStr, "%d", value);
+    AddDefine(define, valueStr);
+}
+
+std::vector<ShaderDescriptor::Define> Renderpass::DefineValues(std::vector<ShaderDescriptor::Define> existingDefines)
+{
+    for (auto& define : defines)
+    {
+        existingDefines.push_back(define.second);
+    }
+    return existingDefines;
+}
+
 void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
 {
     // TODO: don't really need to do every frame

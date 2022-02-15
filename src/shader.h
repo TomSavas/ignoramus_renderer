@@ -47,8 +47,16 @@ struct ShaderDescriptor
         File(Type type, const char* source) : filepath(HARDCODED_SOURCE_FILEPATH), type(type), source(source) {}
     };
 
+    struct Define
+    {
+        const char* define;
+        const char* value;
+    };
+
     std::vector<File> files;
-    ShaderDescriptor(std::vector<File> files = {}) : files(files) {}
+    std::vector<Define> defines;
+    ShaderDescriptor(std::vector<File> files = {}, std::vector<Define> defines = {}) : files(files), defines(defines) {}
+    unsigned long Hash();
 };
 
 class Shader
@@ -65,6 +73,17 @@ public:
     const char* name;
     ShaderDescriptor descriptor;
     unsigned int id;
+
+#define INVALID_BINDING -1
+    struct AutoBinding
+    {
+        const char* resource;
+        int binding;
+    };
+    std::vector<AutoBinding> autoBindings;
+    int GetBinding(const char* resource);
+
+    static bool CompileShader(ShaderDescriptor& descriptor, Shader* shader);
 
     // TODO: maybe autoincrement on enums is nice?
     /*
@@ -136,19 +155,20 @@ struct Watchlist
     void Remove(Shader& shader);
 };
 
-#define DEFAULT_SHADER "default"
-#define SCREEN_QUAD_TEXTURE_SHADER "screen quad texture shader"
+#define DEFAULT_SHADER ShaderPool::defaultShaderDescriptor
+#define SCREEN_QUAD_TEXTURE_SHADER ShaderPool::screenQuadShaderDescriptor
 struct ShaderPool
 {
     ShaderPool();
     ~ShaderPool();
 
-    Watchlist watchlist;
-    std::unordered_map<const char*, Shader*> shaders;
+    static ShaderDescriptor defaultShaderDescriptor;
+    static ShaderDescriptor screenQuadShaderDescriptor;
 
-    Shader& GetShader(const char* name);
-    //Shader& AddShader(const char* name, ShaderDescriptor& descriptor);
-    Shader& AddShader(const char* name, ShaderDescriptor descriptor);
+    Watchlist watchlist;
+    std::unordered_map<unsigned long, Shader*> shaders;
+
+    Shader& GetShader(ShaderDescriptor descriptor);
 
     void ReloadChangedShaders();
 };
