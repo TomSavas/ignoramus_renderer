@@ -28,7 +28,7 @@ bool AABB::ViewFrustumIntersect(glm::mat4 frustumTransform)
         infrontBound[X_BOUND] += corner.x >  corner.w;
         behindBound[Y_BOUND]  += corner.y < -corner.w;
         infrontBound[Y_BOUND] += corner.y >  corner.w;
-        behindBound[Z_BOUND]  += corner.z < -corner.w;
+        behindBound[Z_BOUND]  += corner.z < -0;
         infrontBound[Z_BOUND] += corner.z >  corner.w;
     }
 
