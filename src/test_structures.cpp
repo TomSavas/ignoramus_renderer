@@ -77,13 +77,13 @@ Scene TestScene()
         scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
     }
 
-    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.15f);
+    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.1f);
     blueTransparentMat->Bind();
     blueTransparentMat->UpdateData();
-    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.35f);
+    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.2f);
     greenTransparentMat->Bind();
     greenTransparentMat->UpdateData();
-    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.6f);
+    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.4f);
     redTransparentMat->Bind();
     redTransparentMat->UpdateData();
     for (auto& mesh : dragon.meshes)
