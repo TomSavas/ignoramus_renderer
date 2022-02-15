@@ -49,6 +49,7 @@ void ShowInfo(Scene& scene, NamedPipeline& pipeline, bool* open)
         ImGui::Separator();
 
         ImGui::Text("Pipeline: %s", pipeline.name);
+        ImGui::Text("Camera pos: %f %f %f", scene.camera.transform.pos.x, scene.camera.transform.pos.y, scene.camera.transform.pos.z);
     }
     ImGui::End();
 }
@@ -83,9 +84,11 @@ void ShowPerfMetrics(RenderPipeline& pipeline, bool* open)
             {
                 PerfWidget(renderpass->perfData);
 
+                char subpassLabel[128];
                 for (auto* subpass : renderpass->subpasses)
                 {
-                    if (ImGui::TreeNodeEx(subpass->name))
+                    sprintf(subpassLabel, "%s (CPU: %.3fms, GPU: %.3fms)", subpass->name, subpass->perfData.cpu.avgFrametime, subpass->perfData.gpu.avgFrametime);
+                    if (ImGui::TreeNodeEx(subpassLabel))
                     {
                         PerfWidget(subpass->perfData);
                         ImGui::TreePop();
@@ -102,29 +105,60 @@ void ShowPipelineResources(NamedPipeline& namedPipeline, bool* open)
 {
     if (ImGui::Begin("Pipeline resources", open))
     {
+        static int imagesPerLine = 3;
+
+        ImGui::SliderInt("Images per line", &imagesPerLine, 1, 10);
+        int maxWidthPixels = ImGui::GetWindowContentRegionMax().x;
+        int imageWidth = maxWidthPixels / (float)imagesPerLine;
+
         for (auto* pass : namedPipeline.pipeline.passes)
         {
-            for (int i = 0; i < pass->attachments.size(); i += 3)
+            if (!ImGui::TreeNodeEx(pass->name, ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen))
             {
-                for (int j = 0; j < 3 && i+j < pass->attachments.size(); j++)
+                continue;
+            }
+
+            std::vector<RenderpassAttachment*> attachments;
+            for (int i = 0; i < pass->attachments.size(); i++)
+            {
+                RenderpassAttachment* attachment = pass->attachments[i];
+
+                if (attachment->format != AttachmentFormat::SSBO && attachment->format != AttachmentFormat::ATOMIC_COUNTER)
                 {
-                    RenderpassAttachment* attachment = pass->attachments[i + j];
-                    ImGui::Image((void*)attachment->id, ImVec2(512, 512 * 9/16), ImVec2(0, 1), ImVec2(1, 0));
-                    if (j < 2 && i+j < pass->attachments.size()-1)
+                    attachments.push_back(attachment);
+                }
+            }
+
+            for (int i = 0; i < attachments.size(); i += imagesPerLine)
+            {
+                for (int j = 0; j < imagesPerLine && i+j < attachments.size(); j++)
+                {
+                    RenderpassAttachment* attachment = attachments[i + j];
+
+                    ImGui::Image((void*)attachment->id, ImVec2(imageWidth, imageWidth * 9/16), ImVec2(0, 1), ImVec2(1, 0));
+                    if (j < imagesPerLine-1 && i+j < attachments.size()-1)
                         ImGui::SameLine();
                 }
-                for (int j = 0; j < 3 && i+j < pass->attachments.size(); j++)
+
+                for (int j = 0; j < imagesPerLine && i+j < attachments.size(); j++)
                 {
-                    RenderpassAttachment* attachment = pass->attachments[i + j];
+                    RenderpassAttachment* attachment = attachments[i + j];
+
                     char buf[128];
                     sprintf(buf, "%s (%d)", attachment->name, attachment->id);
-                    ImGui::Text("%*s", j == 0 ? 0 : 80, buf);
-                    if (j < 2 && i+j < pass->attachments.size()-1)
+                    ImVec2 textWidth = ImGui::CalcTextSize(buf);
+
+                    ImGui::SetCursorPosX(imageWidth * j + int(textWidth.x / 2));
+                    ImGui::Text("%s", buf);
+                    if (j < imagesPerLine-1 && i+j < attachments.size()-1)
                         ImGui::SameLine();
                 }
             }
+
+            ImGui::TreePop();
         }
     }
+
     ImGui::End();
 }
 
@@ -135,7 +169,7 @@ void ShowSceneSettings(Scene& scene, bool* open)
         ImGui::Checkbox("Wireframe", (bool*)&scene.sceneParams.wireframe);
 
         ImGui::SliderFloat("Gamma", &scene.sceneParams.gamma, 1, 10);
-        ImGui::SliderFloat("SpecularPower", &scene.sceneParams.specularPower, 1, 100);
+        ImGui::SliderFloat("SpecularPower", &scene.sceneParams.specularPower, 1, 1000);
 
         ImGui::SliderFloat("Directional light shadow bias", &scene.lighting.directionalBiasAndAngleBias.x, 0.000001, 0.1, "%.6f");
         ImGui::SliderFloat("Directional light shadow angle bias", &scene.lighting.directionalBiasAndAngleBias.y, 0.000001, 0.1, "%.6f");
@@ -172,8 +206,8 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
         }
 
         ImGui::Checkbox("Perf metrics", &showPerfMetrics);
-        //ImGui::Checkbox("Pipeline settings", &showPipelineSettings);
         ImGui::Checkbox("Pipeline resources", &showPipelineResources);
+        ImGui::Checkbox("Pipeline settings", &showPipelineSettings);
         ImGui::Checkbox("Scene settings", &showSceneSettings);
         ImGui::Checkbox("Info", &showInfo);
 
@@ -184,11 +218,6 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
     {
         ShowPerfMetrics(pipelines[activePipelineIndex].pipeline, &showPerfMetrics);
     }
-
-    //if (showPipelineSettings)
-    //{
-    //    ShowPipelineSettings(pipelines[activePipelineIndex].pipeline, &showPipelineSettings);
-    //}
 
     if (showPipelineResources)
     {
