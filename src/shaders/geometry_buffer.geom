@@ -1,26 +1,3 @@
-/*
-#version 330 core
-layout (triangles) in;
-layout (triangle_strip, max_vertices=3) out;
-
-//out vec3 Barycentric; // FragPos from GS (output per emitvertex)
-
-void main()
-{
-    Barycentric = vec3(1.f, 0.f, 0.f);
-    gl_Position = gl_in[0].gl_Position;
-    EmitVertex();
-    Barycentric = vec3(0.f, 1.f, 0.f);
-    gl_Position = gl_in[1].gl_Position;
-    EmitVertex();
-    Barycentric = vec3(0.f, 0.f, 1.f);
-    gl_Position = gl_in[2].gl_Position;
-    EmitVertex();
-
-    EndPrimitive();
-}  
-*/
-
 #version 330 core
 layout (triangles) in;
 layout (triangle_strip, max_vertices = 3) out;
@@ -64,3 +41,27 @@ void main() {
     }
     EndPrimitive();
 }  
+
+/*
+#version 330 core
+layout (triangles) in;
+layout (triangle_strip, max_vertices=3) out;
+
+//out vec3 Barycentric; // FragPos from GS (output per emitvertex)
+
+void main()
+{
+    Barycentric = vec3(1.f, 0.f, 0.f);
+    gl_Position = gl_in[0].gl_Position;
+    EmitVertex();
+    Barycentric = vec3(0.f, 1.f, 0.f);
+    gl_Position = gl_in[1].gl_Position;
+    EmitVertex();
+    Barycentric = vec3(0.f, 0.f, 1.f);
+    gl_Position = gl_in[2].gl_Position;
+    EmitVertex();
+
+    EndPrimitive();
+}  
+*/
+

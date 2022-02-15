@@ -69,13 +69,6 @@ void main()
     gAlbedo = minBary * texture(tex_diffuse, TexCoords).rgb;
     //gAlbedo = vec3(TexCoords, 0.f);
 
-    //gSpec.rgb = FragPos.zzz / 10000;
     gSpec.rgb = texture(tex_specular, TexCoords).rrr;
-    /*
-    if (usingSpecularMap)
-    {
-        gSpec.rgb = texture(tex_specular, TexCoords).rrr;
-    }
-    */
 }
 
