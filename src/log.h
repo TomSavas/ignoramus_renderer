@@ -40,7 +40,7 @@ inline void log(const char* level, const char* tag, FILE* stream, const char* es
 
 #include <assert.h>
 #define ASSERT(predicate) assert(predicate)
-#define ASSERTF(predicate, ...) do { if (!predicate) LOG_ERROR(__VA_ARGS__); ASSERT(predicate); } while(0)
+#define ASSERTF(predicate, ...) do { if (!(predicate)) { LOG_ERROR(__VA_ARGS__); } ASSERT(predicate); } while(0)
 
 #ifdef DEBUG
     #include <signal.h> // Unix-like only
