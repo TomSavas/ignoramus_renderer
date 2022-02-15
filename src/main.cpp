@@ -1,7 +1,9 @@
+#include <algorithm>
+#include <cmath>
+#include <random>
 #include <stdio.h>
 
 #include <glm/gtx/string_cast.hpp>
-#include <cmath>
 
 #include "imgui_wrapper.h"
 #include "scene.h"
@@ -46,8 +48,10 @@ int main(void)
 
     ShaderPool shaders;
     Scene scene = TestScene();
-    std::vector<NamedPipeline> pipelines = TestPipelines(shaders);
+    std::vector<NamedPipeline> pipelines = TestPipelines(scene.globalAttachments, shaders);
     int activePipelineIndex = 0;
+
+    glfwSwapInterval(0.f);
 
     glClearColor(0.2f, 0.2f, 0.3f, 1.f);
     while (!glfwWindowShouldClose(window)) 
@@ -89,6 +93,31 @@ int main(void)
         ImGuiWrapper::PreRender();
 
         ShowControls(window, pipelines, activePipelineIndex, scene, shaders);
+
+        // Sorting/shuffling to display issues with unsorted transparency
+        static bool requiresShuffle = false;
+        if (strcmp(pipelines[activePipelineIndex].name, "Sorted forward transparency") == 0)
+        {
+            std::vector<MeshWithMaterial>& transparentMeshes = scene.meshes[TRANSPARENT]; 
+            std::sort(transparentMeshes.begin(), transparentMeshes.end(), 
+                [&](const MeshWithMaterial& a, const MeshWithMaterial& b) -> bool
+                {
+                    return glm::distance(a.mesh.transform.pos, scene.camera.transform.pos) > glm::distance(b.mesh.transform.pos, scene.camera.transform.pos);
+                });
+
+            requiresShuffle = true;
+        }
+        if (strcmp(pipelines[activePipelineIndex].name, "Unsorted forward transparency") == 0 && requiresShuffle)
+        {
+            std::vector<MeshWithMaterial>& transparentMeshes = scene.meshes[TRANSPARENT]; 
+
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(transparentMeshes.begin(), transparentMeshes.end(), g);
+
+            requiresShuffle = false;
+        }
+
         pipelines[activePipelineIndex].pipeline.Render(scene, shaders);
         ImGuiWrapper::Render();
 
