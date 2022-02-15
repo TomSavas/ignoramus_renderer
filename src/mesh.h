@@ -16,6 +16,7 @@ enum MeshTag
     OPAQUE          = 0x01,
     TRANSPARENT     = 0x02,
     SCREEN_QUAD     = 0x04,
+    COMPUTE         = 0x08,
 
     ALL             = -1
 };

@@ -1,0 +1,177 @@
+#version 460
+layout (local_size_x = LIGHT_TILE_CULLING_WORK_GROUP_SIZE_X, local_size_y = LIGHT_TILE_CULLING_WORK_GROUP_SIZE_Y) in;
+//layout (local_size_x = 9, local_size_y = 9) in;
+
+layout (std140) uniform CameraParams
+{
+    mat4 view;
+    mat4 projection;
+    mat4 viewProjection;
+    vec4 cameraPos;
+    vec4 nearFarPlanes;
+};
+
+struct LightTile 
+{
+    uint count;
+    uint offset;
+};
+
+layout (binding = lightIdCount_AUTO_BINDING) uniform atomic_uint lightIdCount;
+layout (binding = LightTileData_AUTO_BINDING, std430) buffer LightTileData
+{
+    LightTile lightTiles[LIGHT_TILE_COUNT];
+    //uint lightIds[];
+};
+
+layout (binding = LightIds_AUTO_BINDING, std430) buffer LightIds
+{
+    uint lightIds[];
+};
+
+struct PointLight
+{
+    vec4 color;
+    vec4 pos;
+    vec4 radius;
+    //float radius;
+    //float padding[3];
+};
+#define MAX_DIRECTIONAL_LIGHTS 32
+layout (std430, binding=PointLights_AUTO_BINDING) buffer PointLights
+{
+    //DirectionalLight directionalLights[MAX_DIRECTIONAL_LIGHTS];
+    //int directionalLightCount = 0;
+    PointLight pointLights[MAX_POINT_LIGHTS];
+    int pointLightCount;
+};
+
+float linearizeDepth(float depth, float near, float far)
+{
+    depth = 2.f * depth - 1.f;
+    return 2.f * near * far / (far + near - depth * (far - near));
+}
+
+float linearizeDepthFromCameraParams(float depth)
+{
+    return linearizeDepth(depth, nearFarPlanes.x, nearFarPlanes.y);
+}
+
+uniform sampler2D tex_depth;
+
+#define MAX_LIGHTS_PER_TILE (4096 + 2048 )
+void main()
+{
+    uint tileId = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    uint threadsPerWorkGroup = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+
+    shared int minDepth;
+    shared int maxDepth;
+    if (gl_LocalInvocationIndex == 0)
+    {
+        minDepth = 10000000;
+        maxDepth = -10000000;
+    }
+    barrier();
+
+    //vec2 tileSizeInPixels = vec2(1920.f, 1080.f) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+    vec2 tileSizeInPixels = vec2(1920.f, 1080.f) / gl_NumWorkGroups.xy;
+    vec2 threadSizeInPixels = tileSizeInPixels / gl_WorkGroupSize.xy;
+    vec2 topLeftTilePixel = gl_WorkGroupID.xy * tileSizeInPixels;
+    vec2 uv = topLeftTilePixel + (gl_LocalInvocationID.xy) * threadSizeInPixels;
+    uv = uv / vec2(1920.f, 1080.f);
+
+
+    //vec2 uv = (gl_WorkGroupSize.xy * gl_WorkGroupID.xy + tileSizeInPixels / gl_LocalInvocationID.xy) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+    //vec2 uv = (gl_WorkGroupSize.xy * gl_WorkGroupID.xy + gl_LocalInvocationID.xy * tileSizeInPixels) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+    uv.y = 1.f - uv.y;
+
+    float depth = texture(tex_depth, uv).r;
+    atomicMin(minDepth, int(depth * 100000.f));
+    atomicMax(maxDepth, int(depth * 100000.f));
+    barrier();
+
+    shared uint localLightIdCount;
+    shared uint localLightIds[MAX_LIGHTS_PER_TILE];
+    //shared uint localLightIds[MAX_POINT_LIGHTS];
+    shared vec4 frustumPlanes[6];
+    if (gl_LocalInvocationIndex == 0)
+    {
+        localLightIdCount = 0;
+
+        vec2 center = gl_NumWorkGroups.xy / 2.f;
+        vec2 offset = center - gl_WorkGroupID.xy;
+
+        vec4 column0 = vec4(-projection[0][0] * center.x, projection[0][1], offset.x, projection[0][3]);
+        vec4 column1 = vec4(projection[1][0], projection[1][1] * center.y, offset.y, projection[1][3]);
+        vec4 column3 = vec4(projection[3][0], projection[3][1], -1.0f, projection[3][3]);
+
+        // Left
+        frustumPlanes[0] = column3 + column0;
+        // Right
+        frustumPlanes[1] = column3 - column0;
+        // Top
+        frustumPlanes[2] = column3 - column1;
+        // Bottom
+        frustumPlanes[3] = column3 + column1;
+        // near
+        frustumPlanes[4] = vec4(0.f, 0.f, -1.f, -linearizeDepthFromCameraParams(float(minDepth) / 100000.f));
+        // far
+        // I have very high depth values in my scene, so depth precision errors need to be accounted for
+        // TODO: rebuild test scene with smaller scales to avoid these depth precision issues
+        const float depthPrecisionHack = 1.2f; 
+        frustumPlanes[5] = vec4(0.f, 0.f, 1.f, linearizeDepthFromCameraParams(float(maxDepth) / 100000.f) * depthPrecisionHack);
+        for (int i = 0; i < 6; i++)
+        {
+            frustumPlanes[i] /= length(frustumPlanes[i].xyz);
+        }
+    }
+    barrier();
+    
+    uint lightsToCheckPerThread = (MAX_POINT_LIGHTS + threadsPerWorkGroup - 1) / threadsPerWorkGroup;
+    for (int i = 0; i < lightsToCheckPerThread; i++)
+    {
+        uint lightId = gl_LocalInvocationIndex * lightsToCheckPerThread + i;
+        if (lightId >= MAX_POINT_LIGHTS)
+            break;
+        PointLight light = pointLights[lightId];
+
+        bool overlapsFrustum = true;
+        vec4 lightPosInViewSpace = view * vec4(light.pos.xyz, 1.f);
+        for (int j = 0; j < 6 && overlapsFrustum; j++)
+        {
+            float distance = dot(frustumPlanes[j], lightPosInViewSpace); // Distance of the point from the plane
+            // https://gamedev.stackexchange.com/questions/79172/checking-if-a-vector-is-contained-inside-a-viewing-frustum
+            overlapsFrustum = -light.radius.x <= distance;
+        }
+
+        if (overlapsFrustum)
+        {
+            localLightIds[atomicAdd(localLightIdCount, 1)] = lightId;
+        }
+    }
+    barrier();
+
+    // TODO: maybe allow all threads to write some values?
+    if (gl_LocalInvocationIndex == 0)
+    {
+        uint lightIdStart = atomicCounterAdd(lightIdCount, localLightIdCount);
+        lightTiles[tileId].count = localLightIdCount;
+        lightTiles[tileId].offset = lightIdStart;
+
+        for (int i = 0; i < localLightIdCount; i++)
+        {
+            lightIds[lightIdStart + i] = localLightIds[i];
+            //lightIds[i] = gl_LocalInvocationIndex;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+

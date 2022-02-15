@@ -7,7 +7,6 @@
 
 #include "mesh.h"
 #include "perf_data.h"
-#include "scene.h"
 
 enum class AttachmentFormat
 {
@@ -34,11 +33,18 @@ struct AttachmentClearOpts
 
 struct RenderpassAttachment
 {
+    static int bufferCount;
+
     const char* name;
     AttachmentFormat format;
 
 #define INVALID_ATTACHMENT_INDEX -1
-    GLenum attachmentIndex;
+#define INVALID_BINDING_INDEX -1
+    union 
+    {
+        GLenum attachmentIndex;
+        GLenum bindingIndex;
+    };
 
     bool hasSeparateClearOpts;
     AttachmentClearOpts clearOpts;
@@ -49,21 +55,8 @@ struct RenderpassAttachment
     RenderpassAttachment(const char* name, AttachmentFormat format, AttachmentClearOpts clearOpts) : name(name), format(format), clearOpts(clearOpts), hasSeparateClearOpts(true), attachmentIndex(INVALID_ATTACHMENT_INDEX) {}
 
     // TODO: remake so that each enum param has a separate "constructor"
-    static RenderpassAttachment SSBO(const char* name, long size) 
-    {
-        RenderpassAttachment attachment(name, AttachmentFormat::SSBO);
-        attachment.size = size;
-
-        return attachment;
-    }
-
-    static RenderpassAttachment AtomicCounter(const char* name) 
-    {
-        RenderpassAttachment attachment(name, AttachmentFormat::ATOMIC_COUNTER);
-        attachment.size = sizeof(GLuint);
-
-        return attachment;
-    }
+    static RenderpassAttachment SSBO(const char* name, long size);
+    static RenderpassAttachment AtomicCounter(const char* name);
 
     unsigned int id;
 };
@@ -86,6 +79,8 @@ struct PassSettings
     GLenum blendEquation;
     GLenum srcBlendFactor;
     GLenum dstBlendFactor;
+     
+    glm::ivec3 computeWorkGroups;
 
     void Clear();
     void Apply();
@@ -113,15 +108,14 @@ struct SubpassAttachment
 
     RenderpassAttachment* renderpassAttachment;
     AttachType type;
-
+    
     bool hasSeparateClearOpts;
     AttachmentClearOpts clearOpts;
 
-    SubpassAttachment(RenderpassAttachment* renderpassAttachment, AttachType type, const char* useFor = "\0") : renderpassAttachment(renderpassAttachment), type(type), hasSeparateClearOpts(false), useFor(useFor) {}
-    SubpassAttachment(RenderpassAttachment* renderpassAttachment, AttachType type, AttachmentClearOpts clearOpts, const char* useFor = "\0") : renderpassAttachment(renderpassAttachment), type(type), clearOpts(clearOpts), hasSeparateClearOpts(true), useFor(useFor) {}
+    const char* useAs;
 
-    // Only if AS_TEXTURE or AS_BLIT
-    const char* useFor;
+    SubpassAttachment(RenderpassAttachment* renderpassAttachment, AttachType type, const char* useAs = "\0") : renderpassAttachment(renderpassAttachment), type(type), hasSeparateClearOpts(false), useAs(useAs) {}
+    SubpassAttachment(RenderpassAttachment* renderpassAttachment, AttachType type, AttachmentClearOpts clearOpts, const char* useAs = "\0") : renderpassAttachment(renderpassAttachment), type(type), clearOpts(clearOpts), hasSeparateClearOpts(true), useAs(useAs) {}
 };
 
 struct Subpass
@@ -146,6 +140,7 @@ struct Renderpass
     std::vector<GLenum> allColorAttachmentIndices;
     std::vector<RenderpassAttachment*> attachments;
     RenderpassAttachment* outputAttachment = nullptr;
+    std::unordered_map<unsigned long, ShaderDescriptor::Define> defines;
 
     PerfData perfData;
 
@@ -153,14 +148,18 @@ struct Renderpass
 
     Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
     Subpass& InsertSubpass(int index, const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<SubpassAttachment> attachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
-    Subpass& AddSubpass(const char* name, Shader* shader, MeshTag acceptedMeshTags, std::vector<RenderpassAttachment*> attachments, SubpassAttachment::AttachType typeForAllAttachments, PassSettings passSettings = PassSettings::DefaultSubpassSettings());
 
     RenderpassAttachment& AddAttachment(RenderpassAttachment attachment);
     RenderpassAttachment& GetAttachment(const char* name);
 
     RenderpassAttachment& AddOutputAttachment();
+
+    void AddDefine(const char* define, const char* value);
+    void AddDefine(const char* define, int value);
+    std::vector<ShaderDescriptor::Define> DefineValues(std::vector<ShaderDescriptor::Define> existingDefines = {});
 };
 
+struct Scene;
 struct RenderPipeline
 {
     std::vector<Renderpass*> passes;
@@ -172,7 +171,7 @@ struct RenderPipeline
     Renderpass& AddOutputPass(ShaderPool& shaders);
 
     // Configurues all attachment in the order they are attached to the pipeline
-    bool ConfigureAttachments();
+    bool ConfigureAttachments(bool validateFramebuffers = true);
 
     void Render(Scene& scene, ShaderPool& shaders);
 

@@ -48,16 +48,16 @@ layout (std140) uniform MaterialParams
     vec4 tintAndOpacity;
 };
 
-layout (binding = 0, r32ui) uniform uimage2D ppllHeads;
-layout (binding = 1) uniform atomic_uint transparentFragmentCount;
-layout (binding = 2, std430) buffer TransparentFragments
+layout (binding = ppllHeads_AUTO_BINDING, r32ui) uniform uimage2D ppllHeads;
+layout (binding = transparentFragmentCount_AUTO_BINDING) uniform atomic_uint transparentFragmentCount;
+layout (binding = TransparentFragments_AUTO_BINDING, std430) buffer TransparentFragments
 {
     TransparencyData ppll[];
 };
 
 void main()
 {    
-    const int maxTransparencyLayers = 8;
+    const int maxTransparencyLayers = 16;
     const int linkedListSize = 1920 * 1080 * maxTransparencyLayers;
     if (atomicCounter(transparentFragmentCount) >= linkedListSize)
     {

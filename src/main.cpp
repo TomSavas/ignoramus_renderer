@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include <glm/gtx/string_cast.hpp>
+#include <cmath>
 
 #include "imgui_wrapper.h"
 #include "scene.h"
@@ -18,7 +19,7 @@ int main(void)
     }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 
     GLFWwindow *window = glfwCreateWindow(1920, 1080, "Ignoramus", NULL, NULL);
     if (!window) 
@@ -57,6 +58,16 @@ int main(void)
         scene.mainCameraParams.view = scene.camera.View();
         scene.mainCameraParams.projection = scene.camera.projection;
         scene.mainCameraParams.viewProjection = scene.mainCameraParams.projection * scene.mainCameraParams.view;
+
+        // Move point lights around the centre in an elipse
+        for (int i = 0; i < MAX_POINT_LIGHTS; i++)
+        {
+            float d = sqrt(scene.lights.pointLights[i].pos.x * scene.lights.pointLights[i].pos.x + scene.lights.pointLights[i].pos.z * scene.lights.pointLights[i].pos.z * 4.f);
+            float angle = atan2(scene.lights.pointLights[i].pos.z * 2.f, scene.lights.pointLights[i].pos.x);
+            angle += 0.01;
+            scene.lights.pointLights[i].pos.x = cos(angle) * d;
+            scene.lights.pointLights[i].pos.z = sin(angle) * d / 2.f;
+        }
 
         // TODO: remove, temporarily here for moving the directional light manually
         if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)

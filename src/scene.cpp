@@ -4,7 +4,7 @@
 #include "shader.h"
 
 
-Scene::Scene()
+Scene::Scene() : globalAttachments("Global attachment container", PassSettings::DefaultRenderpassSettings())
 {
     glGenBuffers(1, &sceneParamsUboId);
     glBindBufferBase(GL_UNIFORM_BUFFER, Shader::sceneParamBindingPoint, sceneParamsUboId);

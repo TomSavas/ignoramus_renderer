@@ -14,4 +14,4 @@ struct NamedPipeline
     const char* name;
     RenderPipeline pipeline;
 };
-std::vector<NamedPipeline> TestPipelines(ShaderPool& shaders);
+std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPool& shaders);

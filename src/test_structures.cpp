@@ -1,3 +1,7 @@
+#include <cstdlib>
+#include <ctime>
+#include <random>
+
 #include "test_structures.h"
 
 #include "model.h"
@@ -5,11 +9,30 @@
 #include "material.h"
 #include "log.h"
 
+float RandomFloat()
+{
+    std::random_device rd;
+    std::default_random_engine eng(rd());
+    std::uniform_real_distribution<> distr(0.f, 1.f);
+    return distr(eng);
+}
+
+#define STRINGIFY(x) #x
+#define STRINGIFY_VALUE(x) STRINGIFY(x) 
+
 Scene TestScene() 
 {
     Scene scene; 
 
-    // Lights
+    // Fictitious pipeline that just helps set up the global attachments
+    RenderPipeline auxiliaryPipeline;
+    auxiliaryPipeline.passes.push_back(&scene.globalAttachments);
+#define POINT_LIGHTS "PointLights"
+    scene.globalAttachments.AddAttachment(RenderpassAttachment::SSBO(POINT_LIGHTS, sizeof(Scene::Lights)));
+    scene.globalAttachments.AddDefine(STRINGIFY(MAX_POINT_LIGHTS), STRINGIFY_VALUE(MAX_POINT_LIGHTS));
+    auxiliaryPipeline.ConfigureAttachments(false);
+
+    // Point lights
     {
         scene.directionalLight.color = glm::vec3(1.f, 1.f, 1.f);
         scene.directionalLight.transform = Transform(glm::vec3(0, 12000, 0), glm::quat(0.7, 0, 0, 0.7));
@@ -22,6 +45,18 @@ Scene TestScene()
 
             scene.lighting.directionalLightDir = glm::normalize(glm::vec4(5000.f, 10000.f, 1000.f, 0.f) * -1.f);
         }
+
+        for (int i = 0; i < MAX_POINT_LIGHTS; i++)
+        {
+            glm::vec3 color = glm::vec3(RandomFloat(), RandomFloat(), RandomFloat());
+            glm::vec3 pos ((RandomFloat() - 0.5) * 12000.f, 50.f + RandomFloat() * 4000.f, (RandomFloat() - 0.5f) * 12000.f);
+            float radius = 100.f + RandomFloat() * 500;
+            scene.lights.pointLights[scene.lights.pointLightCount++] = Scene::PointLight(color, pos, radius);
+        }
+        
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, scene.globalAttachments.GetAttachment(POINT_LIGHTS).id);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Scene::Lights), &scene.lights, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
     scene.sceneParams.gamma = 1.5f; // sRGB = 2.2
@@ -96,19 +131,17 @@ struct PipelineWithShadowmap
     RenderpassAttachment* shadowmap;
 };
 
-PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
+PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
     RenderPipeline pipeline;
 
-    Shader& directionalShadowmapGenShader = shaders.AddShader("directional shadowmap gen",
-        ShaderDescriptor(
-            {
-                ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.vert", ShaderDescriptor::VERTEX_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
-
     Renderpass& directionalShadowmapGenPass = pipeline.AddPass("Directional shadowmap gen pass");
     RenderpassAttachment& shadowmap = directionalShadowmapGenPass.AddAttachment(RenderpassAttachment("shadowmap", AttachmentFormat::DEPTH));
+    Shader& directionalShadowmapGenShader = shaders.GetShader(ShaderDescriptor(
+        {
+            ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.vert", ShaderDescriptor::VERTEX_SHADER),
+            ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues()));
     directionalShadowmapGenPass.AddSubpass("Gen subpass", &directionalShadowmapGenShader, OPAQUE,
         {
             // TODO: remove this color attachment
@@ -116,20 +149,7 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&shadowmap, SubpassAttachment::AS_DEPTH)
         });
 
-    Shader& geometryShader = shaders.AddShader("geometry",
-        ShaderDescriptor(
-            {
-                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
-    Shader& deferredLightingShader = shaders.AddShader("deferred lighting", 
-        ShaderDescriptor(
-            {
-                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
-                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
+
 
 #define DEFERRED_PASS "Deferred pass"
     Renderpass& deferredLightingPass = pipeline.AddPass(DEFERRED_PASS);
@@ -138,6 +158,13 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
     RenderpassAttachment& deferredNormal   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_normal",   AttachmentFormat::FLOAT_3));
     RenderpassAttachment& deferredAlbedo   = deferredLightingPass.AddAttachment(RenderpassAttachment("g_albedo",   AttachmentFormat::FLOAT_3));
     RenderpassAttachment& deferredSpecular = deferredLightingPass.AddAttachment(RenderpassAttachment("g_specular", AttachmentFormat::FLOAT_3));
+
+    Shader& geometryShader = shaders.GetShader(ShaderDescriptor(
+        {
+            ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
+            ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
+            ShaderDescriptor::File(SHADER_PATH "geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues()));
 #define GEOMETRY_SUBPASS "Geometry subpass"
     deferredLightingPass.AddSubpass(GEOMETRY_SUBPASS, &geometryShader, OPAQUE,
         {
@@ -147,7 +174,41 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_COLOR),
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_COLOR),
         });
+
+#define LIGHT_TILE_CULLING_SUBPASS "Light tile culling subpass"
+#define LIGHT_TILE_CULLING_GROUP_SIZE 16
+    deferredLightingPass.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_X", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
+    deferredLightingPass.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_Y", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
+    PassSettings lightTileCullingSettings = PassSettings::DefaultSubpassSettings();
+    //lightTileCullingSettings.computeWorkGroups = glm::ivec3((1920 + LIGHT_TILE_CULLING_GROUP_SIZE - 1) / LIGHT_TILE_CULLING_GROUP_SIZE, (1080 + LIGHT_TILE_CULLING_GROUP_SIZE - 1) / LIGHT_TILE_CULLING_GROUP_SIZE, 1);
+    lightTileCullingSettings.computeWorkGroups = glm::ivec3(48, 32, 1);
+    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT_X", lightTileCullingSettings.computeWorkGroups.x);
+    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT_Y", lightTileCullingSettings.computeWorkGroups.y);
+    int lightTileCount = lightTileCullingSettings.computeWorkGroups.x * lightTileCullingSettings.computeWorkGroups.y;
+    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT", lightTileCount);
+    RenderpassAttachment& lightTileData = deferredLightingPass.AddAttachment(RenderpassAttachment::SSBO("LightTileData", lightTileCount * sizeof(unsigned int) * 2));
+    RenderpassAttachment& lightIds = deferredLightingPass.AddAttachment(RenderpassAttachment::SSBO("LightIds", lightTileCount * sizeof(unsigned int) * MAX_POINT_LIGHTS));
+    RenderpassAttachment& lightIdCount = deferredLightingPass.AddAttachment(RenderpassAttachment::AtomicCounter("lightIdCount"));
+    Shader& lightTileCullingShader = shaders.GetShader(ShaderDescriptor(
+        {
+            ShaderDescriptor::File(SHADER_PATH "light_tile_culling.comp", ShaderDescriptor::COMPUTE_SHADER),
+        }, globalAttachments.DefineValues(deferredLightingPass.DefineValues())));
+    deferredLightingPass.AddSubpass(LIGHT_TILE_CULLING_SUBPASS, &lightTileCullingShader, COMPUTE,
+        {
+            SubpassAttachment(&deferredDepth,    SubpassAttachment::AS_TEXTURE, "tex_depth"),
+            SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+            SubpassAttachment(&lightTileData, SubpassAttachment::AS_SSBO, lightTileData.name),
+            SubpassAttachment(&lightIds, SubpassAttachment::AS_SSBO, lightIds.name),
+            SubpassAttachment(&lightIdCount, SubpassAttachment::AS_ATOMIC_COUNTER, lightIdCount.name),
+        }, lightTileCullingSettings);
+
 #define COMPOSITION_LIGHTING_SUBPASS "Composition-lighting subpass"
+    Shader& deferredLightingShader = shaders.GetShader(ShaderDescriptor(
+        {
+            ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+            ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+            ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues(deferredLightingPass.DefineValues())));
     deferredLightingPass.AddSubpass(COMPOSITION_LIGHTING_SUBPASS, &deferredLightingShader, SCREEN_QUAD,
         {
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
@@ -157,14 +218,18 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(ShaderPool& shaders)
             SubpassAttachment(&deferredAlbedo,   SubpassAttachment::AS_TEXTURE, "tex_diffuse"),
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_TEXTURE, "tex_specular"),
             SubpassAttachment(&shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
+            SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+            SubpassAttachment(&lightTileData, SubpassAttachment::AS_SSBO, lightTileData.name),
+            SubpassAttachment(&lightIds, SubpassAttachment::AS_SSBO, lightIds.name),
+            SubpassAttachment(&lightIdCount, SubpassAttachment::AS_ATOMIC_COUNTER, lightIdCount.name),
         });
 
     return { pipeline, &shadowmap };
 }
 
-RenderPipeline NoTransparencyPipeline(ShaderPool& shaders)
+RenderPipeline NoTransparencyPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
-    RenderPipeline pipeline = UnconfiguredDeferredPipeline(shaders).pipeline;
+    RenderPipeline pipeline = UnconfiguredDeferredPipeline(globalAttachments, shaders).pipeline;
     pipeline.AddOutputPass(shaders);
 
     assert(pipeline.ConfigureAttachments());
@@ -172,16 +237,16 @@ RenderPipeline NoTransparencyPipeline(ShaderPool& shaders)
     return pipeline;
 }
 
-RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
+RenderPipeline UnsortedForwardTransparencyPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
-    Shader& forwardTransparencyShader = shaders.AddShader("forward transparency",
+    Shader& forwardTransparencyShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
-    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
     pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
@@ -203,9 +268,9 @@ RenderPipeline UnsortedForwardTransparencyPipeline(ShaderPool& shaders)
     return pipelineWithShadowmap.pipeline;
 }
 
-RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
+RenderPipeline DepthPeelingPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
-    Shader& depthPeelingShader = shaders.AddShader("depth peeling", 
+    Shader& depthPeelingShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
@@ -213,7 +278,7 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
     
-    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
 #define DEPTH_PASS_COUNT 6
     Renderpass& depthPeelingPass = pipelineWithShadowmap.pipeline.AddPass("Depth peeling pass");
@@ -270,35 +335,35 @@ RenderPipeline DepthPeelingPipeline(ShaderPool& shaders)
     return pipelineWithShadowmap.pipeline;
 }
 
-RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
+RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
-    Shader& dualDepthPeelingInitShader = shaders.AddShader("dual depth peeling init",
+    Shader& dualDepthPeelingInitShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_init.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
-    Shader& dualDepthPeelingShader = shaders.AddShader("dual depth peeling",
+    Shader& dualDepthPeelingShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
-    Shader& dualDepthPeelingBackBlendingShader = shaders.AddShader("dual depth peeling back blending",
+    Shader& dualDepthPeelingBackBlendingShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_back_blending.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
-    Shader& dualDepthPeelingCompositionShader = shaders.AddShader("dual depth peeling composition",
+    Shader& dualDepthPeelingCompositionShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling_composition.frag", ShaderDescriptor::FRAGMENT_SHADER),
             }));
 
-    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
 #define DUAL_DEPTH_PASS_COUNT 3
 #define CLEAR_DEPTH -99999.f
@@ -384,9 +449,9 @@ RenderPipeline DualDepthPeelingPipeline(ShaderPool& shaders)
     return pipelineWithShadowmap.pipeline;
 }
 
-RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
+RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
 {
-    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(shaders);
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
     // TODO: This is absolutely positively horrible. The pipeline should either be smart enough to figure out where the pass/subpass
     // can be inserted. Or there should at least be a better mechanism for inserting passes / subpasses.
@@ -429,17 +494,16 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
     long maxTransparencyLayers = 8;
     long linkedListSize = 1920 * 1080 * maxTransparencyLayers * fragmentDataSize;
     LOG_WARN("", "linked list size: %d MB", linkedListSize / (1024 * 1024));
-    RenderpassAttachment& transparencyPPLL = deferredPass->AddAttachment(RenderpassAttachment::SSBO("transparencyPPLL", linkedListSize));
-    RenderpassAttachment& atomicTransparencyFragments = deferredPass->AddAttachment(RenderpassAttachment::AtomicCounter("atomicTransparencyFragments"));
+    RenderpassAttachment& transparencyPPLL = deferredPass->AddAttachment(RenderpassAttachment::SSBO("TransparentFragments", linkedListSize));
+    RenderpassAttachment& transparentFragmentCount = deferredPass->AddAttachment(RenderpassAttachment::AtomicCounter("transparentFragmentCount"));
 
-    Shader& transparentGeometryShader = shaders.AddShader("transparent_geometry",
+    Shader& transparentGeometryShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "transparency_geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
-
 
     //PassSettings transparentGeometryPassSettings = PassSettings::DefaultRenderpassSettings();
     PassSettings transparentGeometryPassSettings = PassSettings::DefaultSubpassSettings();
@@ -453,12 +517,12 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
 
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
             SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
-            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL")),
-            SubpassAttachment(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
+            SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
             SubpassAttachment(pipelineWithShadowmap.shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
         }, transparentGeometryPassSettings);
 
-    Shader& transparencySortingShader = shaders.AddShader("transparency ppll sorting",
+    Shader& transparencySortingShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
@@ -469,23 +533,23 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
         {
             SubpassAttachment(&deferredPass->AddAttachment(RenderpassAttachment("sort test output", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
             SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
-            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL")),
-            SubpassAttachment(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
+            SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
         }, PassSettings::DefaultSubpassSettings());
 
-    Shader& deferredLightingWithTransparencyShader = shaders.AddShader("deferred lighting with transparency",
+    Shader& deferredLightingWithTransparencyShader = shaders.GetShader(
         ShaderDescriptor(
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "deferred_lighting_with_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
+            }, globalAttachments.DefineValues(deferredPass->DefineValues())));
     // Replace the existing composition shader with a one respecting transparency
     compositionSubpass->shader = &deferredLightingWithTransparencyShader;
     // Add transparency data
     compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads"));
-    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "transparencyPPLL"));
-    compositionSubpass->attachments.push_back(SubpassAttachment(&atomicTransparencyFragments, SubpassAttachment::AS_ATOMIC_COUNTER, "atomicTransparencyFragments"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount"));
 
     pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
@@ -493,14 +557,15 @@ RenderPipeline ABufferPPLLPipeline(ShaderPool& shaders)
     return pipelineWithShadowmap.pipeline;
 }
 
-std::vector<NamedPipeline> TestPipelines(ShaderPool& shaders)
+std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPool& shaders)
 {
     return 
         {
-            { "No transparency", NoTransparencyPipeline(shaders) },
-            { "Unsorted forward transparency", UnsortedForwardTransparencyPipeline(shaders) },
-            { "Depth peeling", DepthPeelingPipeline(shaders) },
-            { "Dual depth peeling", DualDepthPeelingPipeline(shaders) },
-            { "A-Buffer OIT: PPLL", ABufferPPLLPipeline(shaders) },
+            { "No transparency", NoTransparencyPipeline(globalAttachments, shaders) },
+            { "Unsorted forward transparency", UnsortedForwardTransparencyPipeline(globalAttachments, shaders) },
+            { "Sorted forward transparency", UnsortedForwardTransparencyPipeline(globalAttachments, shaders) },
+            { "Depth peeling", DepthPeelingPipeline(globalAttachments, shaders) },
+            { "Dual depth peeling", DualDepthPeelingPipeline(globalAttachments, shaders) },
+            { "A-Buffer OIT: PPLL", ABufferPPLLPipeline(globalAttachments, shaders) },
         };
 }

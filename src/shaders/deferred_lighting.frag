@@ -1,4 +1,4 @@
-#version 330
+#version 460
 layout (location = 0) out vec3 fragColor;
 
 layout (std140) uniform SceneParams
@@ -35,6 +35,35 @@ uniform sampler2D tex_pos;
 uniform sampler2D tex_diffuse;
 uniform sampler2D tex_normal;
 uniform sampler2D tex_specular;
+
+struct LightTile 
+{
+    uint count;
+    uint offset;
+};
+
+layout (binding = lightIdCount_AUTO_BINDING) uniform atomic_uint lightIdCount;
+layout (binding = LightTileData_AUTO_BINDING, std430) buffer LightTileData
+{
+    LightTile lightTiles[LIGHT_TILE_COUNT];
+};
+
+layout (binding = LightIds_AUTO_BINDING, std430) buffer LightIds
+{
+    uint lightIds[];
+};
+
+struct PointLight
+{
+    vec4 color;
+    vec4 pos;
+    vec4 radius;
+};
+layout (std430, binding=PointLights_AUTO_BINDING) buffer PointLights
+{
+    PointLight pointLights[MAX_POINT_LIGHTS];
+    int pointLightCount;
+};
 
 float linearizeDepth(float depth, float near, float far)
 {
@@ -93,6 +122,7 @@ void main()
     float specularity = texture(tex_specular, fragmentPos).r;
 
     vec3 diffuse = calculateDiffuse(color, normal, directionalLightDir.xyz);
+    //vec3 diffuse = diffuseColor(color, normal);
     vec3 specular = calculateSpecular(color, pos, normal, cameraPos.xyz, directionalLightDir.xyz, specularity, specularPower);
     float shadowIntensity = directionalShadowIntensity(pos, normal);
 
