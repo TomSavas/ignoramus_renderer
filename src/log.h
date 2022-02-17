@@ -1,6 +1,9 @@
 #pragma once
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <stdarg.h>
 
@@ -25,6 +28,42 @@ inline void log(const char* level, const char* tag, FILE* stream, const char* es
     fprintf(stream, "\n" RESET_ESC);
 
     va_end(args);
+}
+
+inline char* annotateLineNumbers(const char* str)
+{
+    int lineCount = 0;
+    const char* lastNewline = str;
+    while (lastNewline != NULL && (lastNewline + 1) != NULL)
+    {
+        lineCount++;
+        lastNewline = strstr(lastNewline + 1, "\n");
+    }
+    lastNewline = str;
+
+    int maxLineMagnitude = log10(lineCount);
+    printf("log(%d)=%d\n", lineCount, maxLineMagnitude);
+    char* annotatedStr = (char*) malloc(sizeof(char) * (strlen(str) + lineCount * (maxLineMagnitude + 2 + 3) + 1));
+    annotatedStr[0] = '\0';
+
+    char annotationFormat[16];
+    sprintf(annotationFormat, "%%%dd| ", maxLineMagnitude + 2);
+
+    for (int i = 1; i <= lineCount; i++)
+    {
+        // Stupid, but assume that there won't be more than 10^9 lines
+        char lineAnnotation[10];
+        sprintf(lineAnnotation, annotationFormat, i);
+        
+        if (lastNewline == NULL || (lastNewline + 1) == NULL)
+            break;
+        const char* nextNewline = strstr(lastNewline + 1, "\n");
+        strcat(annotatedStr, lineAnnotation);
+        strncat(annotatedStr, lastNewline + 1, nextNewline - lastNewline);
+        lastNewline = nextNewline;
+    }
+
+    return annotatedStr;
 }
 
 #ifdef DEBUG

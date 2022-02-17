@@ -153,7 +153,7 @@ int Shader::GetBinding(const char* resource)
     for (auto& define : descriptor.defines)
     {
         char buf[256];
-        sprintf(buf, "#define %s %s\n\0", define.define, define.value);
+        sprintf(buf, "#define %s %s\n", define.define, define.value);
         strcat(defines, buf);
     }
     int defineLength = strlen(defines);
@@ -174,13 +174,13 @@ int Shader::GetBinding(const char* resource)
             // TODO: I think this is leaking somewhere...
             file.source = ReadFile(file.filepath, defineLength);
 
+            // Auto bindings
             const char* bindingSuffixStr = "_AUTO_BINDING";
             char* bindingSuffix = strstr((char*)file.source, bindingSuffixStr);
             while (bindingSuffix != NULL)
             {
                 char* bindingEnd = bindingSuffix + strlen(bindingSuffixStr) - 1;
                 char* bindingStart = bindingEnd;
-                bool postNewline = false;
                 while (*(bindingStart - 1) != ' ' && *(bindingStart - 1) != '=')
                 {
                     bindingStart--;
@@ -206,6 +206,7 @@ int Shader::GetBinding(const char* resource)
                 bindingSuffix = strstr(bindingEnd + strlen(bindingSuffixStr), bindingSuffixStr);
             }
              
+            // Defines
             if (defineLength > 0)
             {
                 // Move version to the top
@@ -234,7 +235,10 @@ int Shader::GetBinding(const char* resource)
             char errorMsg[1024];
             glGetShaderInfoLog(id, 1024, NULL, (GLchar*) &errorMsg);
             LOG_ERROR("Shader", "\t\tFailed compiling \"%s\" for 0x%X:\n\t%s", file.filepath, descriptor.Hash(), errorMsg);
-            LOG_ERROR("Shader", "\t\tSource:\n%s", file.source);
+
+            char* annotatedSource = annotateLineNumbers(file.source);
+            LOG_ERROR("Shader", "\t\tSource:\n%s", annotatedSource);
+            free(annotatedSource);
         }
 
         shaderIds.push_back(id);
