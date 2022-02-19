@@ -11,6 +11,22 @@ layout (std140) uniform CameraParams
     vec4 nearFarPlanes;
 };
 
+struct TransparencyData
+{
+    vec4 color;
+    vec3 pos;
+    vec3 normal;
+    float depth;
+    uint nextFragmentIndex;
+};
+
+layout (binding = ppllHeads_AUTO_BINDING, r32ui) uniform uimage2D ppllHeads;
+layout (binding = transparentFragmentCount_AUTO_BINDING) uniform atomic_uint transparentFragmentCount;
+layout (binding = TransparentFragments_AUTO_BINDING, std430) buffer TransparentFragments
+{
+    TransparencyData ppll[];
+};
+
 struct LightTile 
 {
     uint count;
@@ -89,6 +105,15 @@ void main()
     float depth = texture(tex_depth, uv).r;
     atomicMin(minDepth, int(depth * 100000.f));
     atomicMax(maxDepth, int(depth * 100000.f));
+
+    uint head = imageLoad(ppllHeads, ivec2(uv.xy * vec2(1920.f, 1080.f))).r;
+#define NO_TRANSPARENCY_INDEX 0xffffffff
+    if (head != NO_TRANSPARENCY_INDEX)
+    {
+        float transparencyDepth = ppll[head].depth; 
+        atomicMin(minDepth, int(transparencyDepth * 100000.f));
+    }
+
     barrier();
 
     shared uint localLightIdCount;
