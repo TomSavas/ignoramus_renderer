@@ -62,12 +62,11 @@ void main()
     }
     else
     {
-        //normal = Tangent;
         normal = Normal;
     }
+
     gNormal = normalize(normal);
     gAlbedo = minBary * texture(tex_diffuse, TexCoords).rgb;
-    //gAlbedo = vec3(TexCoords, 0.f);
 
     gSpec.rgb = texture(tex_specular, TexCoords).rrr;
 }

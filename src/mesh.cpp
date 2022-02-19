@@ -1,3 +1,6 @@
+#include <cmath>
+
+#include "log.h"
 #include "mesh.h"
 
 #include "texture_pool.h"
@@ -16,11 +19,15 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
 {
     meshTag = tag;
 
-    glm::fvec3 *tangents = (glm::fvec3*) malloc(sizeof(glm::fvec3) * mesh.Vertices.size());
+    glm::fvec4 *tangents = (glm::fvec4*) malloc(sizeof(glm::fvec4) * mesh.Vertices.size());
+    glm::fvec4 *bitangents = (glm::fvec4*) malloc(sizeof(glm::fvec4) * mesh.Vertices.size());
     assert(tangents != nullptr);
 
     for (int i = 0; i < mesh.Vertices.size(); i++)
-        tangents[i] = glm::fvec3(0.f, 0.f, 0.f);
+    {
+        tangents[i] = glm::fvec4(0.f, 0.f, 0.f, 0.f);
+        bitangents[i] = glm::fvec4(0.f, 0.f, 0.f, 0.f);
+    }
 
     assert(mesh.Indices.size() % 3 == 0);
     for (int i = 0; i < mesh.Indices.size(); i += 3)
@@ -38,21 +45,54 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
             glm::vec2 deltaUV1 = ToVec2(v2.TextureCoordinate) - ToVec2(v0.TextureCoordinate);
 
             float f = 1.f / (deltaUV0.x * deltaUV1.y - deltaUV1.x * deltaUV0.y);
+            if (!std::isfinite(f))
+            {
+                f = 1.f;
+            }
+
             glm::vec3 tangent;
             tangent.x = f * (deltaUV1.y * edge0.x - deltaUV0.y * edge1.x);
             tangent.y = f * (deltaUV1.y * edge0.y - deltaUV0.y * edge1.y);
             tangent.z = f * (deltaUV1.y * edge0.z - deltaUV0.y * edge1.z);
 
-            tangents[mesh.Indices[i + ((j+0) % 3)]] += tangent;
-            tangents[mesh.Indices[i + ((j+1) % 3)]] += tangent;
-            tangents[mesh.Indices[i + ((j+2) % 3)]] += tangent;
+            glm::vec3 bitangent;
+            bitangent.x = f * (-deltaUV1.x * edge0.x + deltaUV0.x * edge1.x);
+            bitangent.y = f * (-deltaUV1.x * edge0.y + deltaUV0.x * edge1.y);
+            bitangent.z = f * (-deltaUV1.x * edge0.z + deltaUV0.x * edge1.z);
+
+            bool tangentNan = !std::isfinite(tangent.x) || !std::isfinite(tangent.y) || !std::isfinite(tangent.z);
+            bool bitangentNan = !std::isfinite(bitangent.x) || !std::isfinite(bitangent.y) || !std::isfinite(bitangent.z);
+            if (tangentNan != bitangentNan)
+            {
+                if (tangentNan)
+                {
+                    tangent = glm::cross(ToVec3(v0.Normal), bitangent);
+                }
+                else
+                {
+                    bitangent = glm::cross(tangent, ToVec3(v0.Normal));
+                }
+            }
+
+            tangents[mesh.Indices[i + ((j+0) % 3)]] += glm::vec4(tangent, 0.f);
+            tangents[mesh.Indices[i + ((j+1) % 3)]] += glm::vec4(tangent, 0.f);
+            tangents[mesh.Indices[i + ((j+2) % 3)]] += glm::vec4(tangent, 0.f);
+
+            bitangents[mesh.Indices[i + ((j+0) % 3)]] += glm::vec4(bitangent, 0.f);
+            bitangents[mesh.Indices[i + ((j+1) % 3)]] += glm::vec4(bitangent, 0.f);
+            bitangents[mesh.Indices[i + ((j+2) % 3)]] += glm::vec4(bitangent, 0.f);
         }
     }
 
     for (int i = 0; i < mesh.Vertices.size(); i++)
+    {
         tangents[i] = glm::normalize(tangents[i]);
+        bitangents[i] = glm::normalize(bitangents[i]);
 
-    const int convertedVerticesElementCount = 3 + 3 + 3 + 2;
+        tangents[i].w = (glm::dot(glm::cross(glm::vec3(bitangents[i]), glm::vec3(tangents[i])), ToVec3(mesh.Vertices[i].Normal))) < 0.f ? -1.f : 1.f;
+    }
+
+    const int convertedVerticesElementCount = 3 + 3 + 4 + 2;
     float *convertedVertices = (float *) malloc(sizeof(float) * convertedVerticesElementCount * mesh.Vertices.size());
     assert(convertedVertices != nullptr);
     for (int i = 0; i < mesh.Vertices.size(); i++)
@@ -70,9 +110,10 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
         convertedVertices[idx+ 6] = tangents[i].x;
         convertedVertices[idx+ 7] = tangents[i].y;
         convertedVertices[idx+ 8] = tangents[i].z;
+        convertedVertices[idx+ 9] = tangents[i].w;
 
-        convertedVertices[idx+ 9] = mesh.Vertices[i].TextureCoordinate.X;
-        convertedVertices[idx+10] = mesh.Vertices[i].TextureCoordinate.Y;
+        convertedVertices[idx+10] = mesh.Vertices[i].TextureCoordinate.X;
+        convertedVertices[idx+11] = mesh.Vertices[i].TextureCoordinate.Y;
 
         aabbModelSpace.min = glm::vec3(glm::min(aabbModelSpace.min.x, mesh.Vertices[i].Position.X),
                 glm::min(aabbModelSpace.min.y, mesh.Vertices[i].Position.Y),
@@ -87,12 +128,13 @@ Mesh::Mesh(objl::Mesh &mesh, MeshTag tag, std::vector<std::pair<std::string, std
     BufferLayout bufferLayout ({
             { "pos", 3, GL_FLOAT, sizeof(float) },
             { "normal", 3, GL_FLOAT, sizeof(float) },
-            { "tangent", 3, GL_FLOAT, sizeof(float) },
+            { "tangent", 4, GL_FLOAT, sizeof(float) },
             { "uv", 2, GL_FLOAT, sizeof(float) }});
     
     vertexArray = VertexArray(vertexBuffer, indexBuffer, bufferLayout);
 
     free(tangents);
+    free(bitangents);
     free(convertedVertices);
 
     for (int i = 0; i < overrideTexturesWithPaths.size(); i++)

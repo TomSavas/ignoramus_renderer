@@ -1,7 +1,7 @@
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec3 aTangent;
+layout (location = 2) in vec4 aTangent;
 layout (location = 3) in vec2 aTexCoords;
 
 out vec3 vWorldFragPos;
@@ -25,7 +25,6 @@ layout (std140) uniform CameraParams
     vec4 nearFarPlanes;
 };
 
-//uniform mat4 model;
 layout (std140) uniform ModelParams
 {
     mat4 model;
@@ -37,27 +36,18 @@ void main()
     vFragPos = projection * view * model * vec4(aPos, 1.0);
     vTexCoords = aTexCoords;
                     
+    mat3 normalRecalculationMatrix = transpose(inverse(mat3(model)));
+    vNormal = normalize(normalRecalculationMatrix * aNormal.xyz);
     if (usingNormalMap && !showModelNormals)
     {
-        vec3 N = normalize(vec3(model * vec4(aNormal, 0.f)));
-        vec3 tan = normalize(aTangent);
-        vec3 T = normalize(vec3(model * vec4(tan, 0.f)));
+        vec3 N = vNormal;
+        vec3 T = normalize(normalRecalculationMatrix * aTangent.xyz);
+        T = normalize(T - dot(T, N) * N);
+        vec3 B = cross(N, T) * aTangent.w;
+
         vTangent = T;
-        vec3 B = cross(N, T);
         vTbn = mat3(T, B, N);
     }
-    else
-    {
-        mat3 normalRecalculationMatrix = transpose(inverse(mat3(model)));
-        vNormal = normalRecalculationMatrix * aNormal;
-    }
 
-    vec3 tan = normalize(aTangent);
-    vec3 T = normalize(vec3(model * vec4(tan, 0.f)));
-    vTangent = T;
-
-    mat3 m = transpose(inverse(mat3(model)));
-
-    //gl_Position = projection * view * worldPos;
     gl_Position = vFragPos;
 }
