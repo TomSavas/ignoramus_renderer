@@ -505,21 +505,19 @@ RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& sh
                 ShaderDescriptor::File(SHADER_PATH "transparency_geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
             }));
 
-    //PassSettings transparentGeometryPassSettings = PassSettings::DefaultRenderpassSettings();
     PassSettings transparentGeometryPassSettings = PassSettings::DefaultSubpassSettings();
     transparentGeometryPassSettings.ignoreApplication = false;
-    transparentGeometryPassSettings.enable = { GL_BLEND };
+    transparentGeometryPassSettings.enable = { GL_DEPTH_TEST };
     transparentGeometryPassSettings.depthMask = GL_FALSE;
-    transparentGeometryPassSettings.clearColor = glm::vec4(0.5f, 0.5f, 0.5f, 1.f);
     deferredPass->InsertSubpass(geometrySubpassIndex + 1, "transparent geometry pass", &transparentGeometryShader, TRANSPARENT,
         {
-            //SubpassAttachment(&deferredPass->AddOutputAttachment(), SubpassAttachment::AS_COLOR),
+            // NOTE: not sure, a bug or not - this uses the same attachment as the opaque pass since it uses the same FB.
+            //SubpassAttachment(&deferredPass->GetAttachment("g_depth"), SubpassAttachment::AS_DEPTH),
 
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
             SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
             SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
             SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
-            SubpassAttachment(pipelineWithShadowmap.shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
         }, transparentGeometryPassSettings);
 
     Shader& transparencySortingShader = shaders.GetShader(
@@ -531,7 +529,6 @@ RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& sh
             }));
     deferredPass->InsertSubpass(geometrySubpassIndex + 2, "sorting subpass", &transparencySortingShader, SCREEN_QUAD,
         {
-            SubpassAttachment(&deferredPass->AddAttachment(RenderpassAttachment("sort test output", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
             SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
             SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
             SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
