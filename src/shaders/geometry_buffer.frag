@@ -68,6 +68,7 @@ void main()
     gNormal = normalize(normal);
     gAlbedo = minBary * texture(tex_diffuse, TexCoords).rgb;
 
-    gSpec.rgb = texture(tex_specular, TexCoords).rrr;
+    //gSpec.rgb = texture(tex_specular, TexCoords).rrr;
+    gSpec.rgb = vec3(1.f, 0.f, 0.f);
 }
 

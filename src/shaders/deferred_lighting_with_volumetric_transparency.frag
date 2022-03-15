@@ -96,23 +96,56 @@ vec4 traceTransparency()
             backLayer = ppll[frontLayer.nextFragmentIndex]; 
             layerCount += 2;
         } while(frontLayer.depth < lastDepth && backLayer.nextFragmentIndex != NO_TRANSPARENCY_INDEX && layerCount < MAX_TRANSPARENCY_LAYERS);
+        //} while(false);
 
         // NOTE: I don't think we need this, unless we encounter some whacky geometry
         if (frontLayer.depth < lastDepth)
         {
             break;
+            //return NO_TRANSPARENCY_COLOR;
         }
         backLayer = ppll[frontLayer.nextFragmentIndex]; 
 
-
+        // TODO: move to transparency material
+        const float refractiveIndex = 1.52f;
+        //const float refractiveIndex = 1.f;
+        //thickness = linearizeDepthFromCameraParams(frontLayer.depth) - linearizeDepthFromCameraParams(backLayer.depth);
+        thickness = linearizeDepthFromCameraParams(backLayer.depth) - linearizeDepthFromCameraParams(frontLayer.depth);
+        thickness /= nearFarPlanes.y;
+        thickness *= pow(thickness, 3.f);//thickness * thickness * thickness;
+        thickness *= nearFarPlanes.y;
+        thickness *= 90000;
+        thickness *= 90000;
+        //thickness /= 100;
+        vec3 toFragment = normalize(frontLayer.pos - cameraPos.xyz);
+        vec3 refractedDir = refract(toFragment, frontLayer.normal, 1.f / refractiveIndex);
+        // NOTE: not quite correct -- we're not un-refracting the ray
+        rayEndPos = frontLayer.pos + refractedDir * thickness;
         lastDepth = backLayer.depth;
-        rayEndPos = backLayer.pos;
+
+        float t = linearizeDepthFromCameraParams(backLayer.depth) - linearizeDepthFromCameraParams(frontLayer.depth);
+        t /= nearFarPlanes.y;
+        t *= t * t;
+        t *= nearFarPlanes.y;
+        t *= 9000;
+        t = 1.f + t/8.f;
+
+
+        float frontLayerTransparency = min(1.f, frontLayer.color.a * t);
+        vec4 frontLayerColor = vec4(shade(frontLayer.pos, frontLayer.color.rgb, frontLayer.normal, 0.f, 1.f, uv.xy), frontLayerTransparency);
+
+        float backLayerTransparency = backLayer.color.a;
+        vec4 backLayerColor = vec4(shade(backLayer.pos, backLayer.color.rgb, backLayer.normal, 0.f, 1.f, uv.xy), backLayerTransparency);
+
+        //vec4 transparencyVolumeColor = under(transparencyLayerColor(backLayer), transparencyLayerColor(frontLayer));
+        //vec4 transparencyVolumeColor = under(backLayerColor, frontLayerColor);
 
         vec4 transparencyVolumeColor = under(backLayer.color, frontLayer.color);
-        // Effectively only the front surface reflects light
         transparencyVolumeColor.rgb = shade(frontLayer.pos, transparencyVolumeColor.rgb, frontLayer.normal, 256.f, 5.f, uv.xy);
 
         color = under(transparencyVolumeColor, color);
+        //color = vec4(vec3(thickness), 1.f);
+        //color = frontLayerColor;
 
         uv = viewProjection * vec4(rayEndPos, 1.f);
         uv /= uv.w; 
@@ -125,6 +158,7 @@ vec4 traceTransparency()
     }
 
     return under(vec4(shadeFromTex(uv.xy), 1.f), color);
+    //return color;
 }
 
 void main()

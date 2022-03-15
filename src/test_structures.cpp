@@ -30,6 +30,23 @@ Scene TestScene()
 #define POINT_LIGHTS "PointLights"
     scene.globalAttachments.AddAttachment(RenderpassAttachment::SSBO(POINT_LIGHTS, sizeof(Scene::Lights)));
     scene.globalAttachments.AddDefine(STRINGIFY(MAX_POINT_LIGHTS), STRINGIFY_VALUE(MAX_POINT_LIGHTS));
+#define LIGHT_TILE_CULLING_SUBPASS "Light tile culling subpass"
+#define LIGHT_TILE_CULLING_GROUP_SIZE 16
+    scene.globalAttachments.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_X", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
+    scene.globalAttachments.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_Y", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
+    PassSettings lightTileCullingSettings = PassSettings::DefaultSubpassSettings();
+#define LIGHT_TILE_COUNT_X 48
+#define LIGHT_TILE_COUNT_Y 32
+#define LIGHT_TILE_COUNT (LIGHT_TILE_COUNT_X * LIGHT_TILE_COUNT_Y)
+    scene.globalAttachments.AddDefine(STRINGIFY(LIGHT_TILE_COUNT_X), STRINGIFY_VALUE(LIGHT_TILE_COUNT_X));
+    scene.globalAttachments.AddDefine(STRINGIFY(LIGHT_TILE_COUNT_Y), STRINGIFY_VALUE(LIGHT_TILE_COUNT_Y));
+    scene.globalAttachments.AddDefine(STRINGIFY(LIGHT_TILE_COUNT), LIGHT_TILE_COUNT);
+#define LIGHT_TILE_DATA "LightTileData"
+    scene.globalAttachments.AddAttachment(RenderpassAttachment::SSBO("LightTileData", LIGHT_TILE_COUNT * sizeof(unsigned int) * 2));
+#define LIGHT_IDS "LightIds"
+    scene.globalAttachments.AddAttachment(RenderpassAttachment::SSBO("LightIds", LIGHT_TILE_COUNT * sizeof(unsigned int) * MAX_POINT_LIGHTS));
+#define LIGHT_ID_COUNT "lightIdCount"
+    scene.globalAttachments.AddAttachment(RenderpassAttachment::AtomicCounter("lightIdCount"));
     auxiliaryPipeline.ConfigureAttachments(false);
 
     // Point lights
@@ -49,8 +66,8 @@ Scene TestScene()
         for (int i = 0; i < MAX_POINT_LIGHTS; i++)
         {
             glm::vec3 color = glm::vec3(RandomFloat(), RandomFloat(), RandomFloat());
-            glm::vec3 pos ((RandomFloat() - 0.5) * 12000.f, 50.f + RandomFloat() * 4000.f, (RandomFloat() - 0.5f) * 12000.f);
-            float radius = 100.f + RandomFloat() * 500;
+            glm::vec3 pos ((RandomFloat() - 0.5) * 10000.f, 50.f + RandomFloat() * 4000.f, (RandomFloat() - 0.5f) * 10000.f);
+            float radius = 100.f + RandomFloat() * 600;
             scene.lights.pointLights[scene.lights.pointLightCount++] = Scene::PointLight(color, pos, radius);
         }
         
@@ -76,6 +93,11 @@ Scene TestScene()
         mesh.transform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(5.f, 5.f, 5.f));
         scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
     }
+    for (auto& mesh : dragon.meshes)
+    {
+        mesh.transform = Transform(glm::vec3(0.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, -glm::pi<float>(), 0.f)), glm::vec3(500.f));
+        scene.meshes[OPAQUE].push_back({ mesh, opaqueMat });
+    }
 
     TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.1f);
     blueTransparentMat->Bind();
@@ -88,35 +110,63 @@ Scene TestScene()
     redTransparentMat->UpdateData();
     for (auto& mesh : dragon.meshes)
     {
-        mesh.transform = Transform(glm::vec3(0.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+        mesh.transform = Transform(glm::vec3(0.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+        mesh.transform = Transform(glm::vec3(500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
     }
 
     for (auto& mesh : sphere.meshes)
     {
-        mesh.transform = Transform(glm::vec3(500.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(500.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(0.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(0.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 400.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
 
-        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
 
-        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+
+        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+
+        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+        
+        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+
+        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
+        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
+        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
     }
 
@@ -175,20 +225,8 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_COLOR),
         });
 
-#define LIGHT_TILE_CULLING_SUBPASS "Light tile culling subpass"
-#define LIGHT_TILE_CULLING_GROUP_SIZE 16
-    deferredLightingPass.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_X", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
-    deferredLightingPass.AddDefine("LIGHT_TILE_CULLING_WORK_GROUP_SIZE_Y", STRINGIFY_VALUE(LIGHT_TILE_CULLING_GROUP_SIZE));
     PassSettings lightTileCullingSettings = PassSettings::DefaultSubpassSettings();
-    //lightTileCullingSettings.computeWorkGroups = glm::ivec3((1920 + LIGHT_TILE_CULLING_GROUP_SIZE - 1) / LIGHT_TILE_CULLING_GROUP_SIZE, (1080 + LIGHT_TILE_CULLING_GROUP_SIZE - 1) / LIGHT_TILE_CULLING_GROUP_SIZE, 1);
-    lightTileCullingSettings.computeWorkGroups = glm::ivec3(48, 32, 1);
-    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT_X", lightTileCullingSettings.computeWorkGroups.x);
-    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT_Y", lightTileCullingSettings.computeWorkGroups.y);
-    int lightTileCount = lightTileCullingSettings.computeWorkGroups.x * lightTileCullingSettings.computeWorkGroups.y;
-    deferredLightingPass.AddDefine("LIGHT_TILE_COUNT", lightTileCount);
-    RenderpassAttachment& lightTileData = deferredLightingPass.AddAttachment(RenderpassAttachment::SSBO("LightTileData", lightTileCount * sizeof(unsigned int) * 2));
-    RenderpassAttachment& lightIds = deferredLightingPass.AddAttachment(RenderpassAttachment::SSBO("LightIds", lightTileCount * sizeof(unsigned int) * MAX_POINT_LIGHTS));
-    RenderpassAttachment& lightIdCount = deferredLightingPass.AddAttachment(RenderpassAttachment::AtomicCounter("lightIdCount"));
+    lightTileCullingSettings.computeWorkGroups = glm::ivec3(LIGHT_TILE_COUNT_X, LIGHT_TILE_COUNT_Y, 1);
     Shader& lightTileCullingShader = shaders.GetShader(ShaderDescriptor(
         {
             ShaderDescriptor::File(SHADER_PATH "light_tile_culling.comp", ShaderDescriptor::COMPUTE_SHADER),
@@ -197,9 +235,9 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
         {
             SubpassAttachment(&deferredDepth,    SubpassAttachment::AS_TEXTURE, "tex_depth"),
             SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
-            SubpassAttachment(&lightTileData, SubpassAttachment::AS_SSBO, lightTileData.name),
-            SubpassAttachment(&lightIds, SubpassAttachment::AS_SSBO, lightIds.name),
-            SubpassAttachment(&lightIdCount, SubpassAttachment::AS_ATOMIC_COUNTER, lightIdCount.name),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
         }, lightTileCullingSettings);
 
 #define COMPOSITION_LIGHTING_SUBPASS "Composition-lighting subpass"
@@ -207,6 +245,7 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
         {
             ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
             ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+            ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
             ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
         }, globalAttachments.DefineValues(deferredLightingPass.DefineValues())));
     deferredLightingPass.AddSubpass(COMPOSITION_LIGHTING_SUBPASS, &deferredLightingShader, SCREEN_QUAD,
@@ -219,9 +258,9 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             SubpassAttachment(&deferredSpecular, SubpassAttachment::AS_TEXTURE, "tex_specular"),
             SubpassAttachment(&shadowmap,        SubpassAttachment::AS_TEXTURE, "shadow_map"),
             SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
-            SubpassAttachment(&lightTileData, SubpassAttachment::AS_SSBO, lightTileData.name),
-            SubpassAttachment(&lightIds, SubpassAttachment::AS_SSBO, lightIds.name),
-            SubpassAttachment(&lightIdCount, SubpassAttachment::AS_ATOMIC_COUNTER, lightIdCount.name),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+            SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
         });
 
     return { pipeline, &shadowmap };
@@ -244,8 +283,9 @@ RenderPipeline UnsortedForwardTransparencyPipeline(Renderpass& globalAttachments
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "forward_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
+        }, globalAttachments.DefineValues()));
     PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
     pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
@@ -259,9 +299,13 @@ RenderPipeline UnsortedForwardTransparencyPipeline(Renderpass& globalAttachments
     Renderpass& forwardTransparencyRenderpass = pipelineWithShadowmap.pipeline.AddPass("Forward transparency pass", settings);
     forwardTransparencyRenderpass.fbo = 0;
 
-    Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subass", &forwardTransparencyShader, TRANSPARENT, 
+    Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subpass", &forwardTransparencyShader, TRANSPARENT, 
             {
                 SubpassAttachment(pipelineWithShadowmap.shadowmap, SubpassAttachment::AS_TEXTURE, "shadow_map"),
+                SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
             }, settings);
 
     assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
@@ -275,8 +319,9 @@ RenderPipeline DepthPeelingPipeline(Renderpass& globalAttachments, ShaderPool& s
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER)
-            }));
+            }, globalAttachments.DefineValues()));
     
     PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
@@ -302,6 +347,10 @@ RenderPipeline DepthPeelingPipeline(Renderpass& globalAttachments, ShaderPool& s
                 SubpassAttachment(evenPeel ? &depthPeelingDepthA : &depthPeelingDepthB, SubpassAttachment::AS_DEPTH),
                 SubpassAttachment(evenPeel ? &depthPeelingDepthB : &depthPeelingDepthA, SubpassAttachment::AS_TEXTURE, "greater_depth"),
                 SubpassAttachment(pipelineWithShadowmap.shadowmap,                      SubpassAttachment::AS_TEXTURE, "shadow_map"),
+                SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
             }, peelSettings);
     }
 
@@ -348,8 +397,9 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
             {
                 ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(SHADER_PATH "dual_depth_peeling.frag", ShaderDescriptor::FRAGMENT_SHADER),
-            }));
+            }, globalAttachments.DefineValues()));
     Shader& dualDepthPeelingBackBlendingShader = shaders.GetShader(
         ShaderDescriptor(
             {
@@ -370,13 +420,13 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
 #define MIN_DEPTH 0.f
 #define MAX_DEPTH 1.f
     Renderpass& dualDepthPeelingPass = pipelineWithShadowmap.pipeline.AddPass("Dual depth peeling pass");
-    RenderpassAttachment& minMaxDepthA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_A", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(CLEAR_DEPTH, CLEAR_DEPTH, 0.f, 0.f))));
+    RenderpassAttachment& minMaxDepthA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_A", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(MIN_DEPTH, MIN_DEPTH, 0.f, 0.f))));
     RenderpassAttachment& minMaxDepthB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("min_max_depth_B", AttachmentFormat::FLOAT_2, AttachmentClearOpts(glm::vec4(-MIN_DEPTH, MAX_DEPTH, 0.f, 0.f))));
     RenderpassAttachment& frontBlenderA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("front_blender_A", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
     RenderpassAttachment& frontBlenderB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("front_blender_B", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
     RenderpassAttachment& tempBackBlenderA = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("temp_back_blender_A", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
     RenderpassAttachment& tempBackBlenderB = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("temp_back_blender_B", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
-    RenderpassAttachment& finalBackBlender = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("back_blender", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.5f, 0.5f, 0.5f, 0.f))));
+    RenderpassAttachment& finalBackBlender = dualDepthPeelingPass.AddAttachment(RenderpassAttachment("back_blender", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f, 0.f, 0.f, 0.f))));
 
     PassSettings dualDepthPeelingInitPassSettings = PassSettings::DefaultSubpassSettings();
     dualDepthPeelingInitPassSettings.ignoreApplication = false;
@@ -408,6 +458,10 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
                 SubpassAttachment(evenPeel ? &minMaxDepthB     : &minMaxDepthA,     SubpassAttachment::AS_TEXTURE, "previousDepthBlender"),
                 SubpassAttachment(evenPeel ? &frontBlenderB    : &frontBlenderA,    SubpassAttachment::AS_TEXTURE, "previousFrontBlender"),
                 SubpassAttachment(pipelineWithShadowmap.shadowmap,                  SubpassAttachment::AS_TEXTURE, "shadow_map"),
+                SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
             }, subpassSettings);
 
         char* blendingSubpassName = new char[64];
@@ -449,7 +503,7 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
     return pipelineWithShadowmap.pipeline;
 }
 
-RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& shaders)
+RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& shaders, const char* transparencyFragShaderFilepath)
 {
     PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
@@ -539,7 +593,8 @@ RenderPipeline ABufferPPLLPipeline(Renderpass& globalAttachments, ShaderPool& sh
             {
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "deferred_lighting_with_transparency.frag", ShaderDescriptor::FRAGMENT_SHADER)
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(transparencyFragShaderFilepath, ShaderDescriptor::FRAGMENT_SHADER)
             }, globalAttachments.DefineValues(deferredPass->DefineValues())));
     // Replace the existing composition shader with a one respecting transparency
     compositionSubpass->shader = &deferredLightingWithTransparencyShader;
@@ -563,6 +618,7 @@ std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPo
             { "Sorted forward transparency", UnsortedForwardTransparencyPipeline(globalAttachments, shaders) },
             { "Depth peeling", DepthPeelingPipeline(globalAttachments, shaders) },
             { "Dual depth peeling", DualDepthPeelingPipeline(globalAttachments, shaders) },
-            { "A-Buffer OIT: PPLL", ABufferPPLLPipeline(globalAttachments, shaders) },
+            { "A-Buffer OIT: PPLL (simple)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_transparency.frag") },
+            { "A-Buffer OIT: PPLL (volumetric)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_volumetric_transparency.frag") },
         };
 }

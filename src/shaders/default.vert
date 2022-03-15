@@ -23,8 +23,10 @@ layout (std140) uniform ModelParams
 
 void main()
 {
-    Pos = vert_pos;
-    Normal = vert_norm;
+    Pos = (model * vec4(vert_pos, 1.f)).xyz;
+
+    mat3 normalRecalculationMatrix = transpose(inverse(mat3(model)));
+    Normal = normalize(normalRecalculationMatrix * vert_norm);
 
     gl_Position = viewProjection * model * vec4(vert_pos, 1.f);
 }

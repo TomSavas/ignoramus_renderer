@@ -5,12 +5,12 @@ vec3 calculateDiffuse(vec3 color, vec3 normal, vec3 lightDir)
     return color * max(0.f, dot(normal, -lightDir));
 }
 
-vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity, float specularPower)
+vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity)
 {
     vec3 cameraToFrag = normalize(pos - cameraPos.xyz);
-    float specularIntensity = pow(max(dot(cameraToFrag, reflect(-lightDir, normal)), 0.f), 1.f / specularity * specularPower);
+    float specularIntensity = pow(max(dot(cameraToFrag, reflect(-lightDir, normal)), 0.f), specularity);
 
-    return vec3(1.f, 1.f, 1.f) * specularIntensity;
+    return color * specularIntensity;
 }
 
 vec3 composeColor(float ambientIntensity, float shadowIntensity, vec3 ambientColor, vec3 diffuse, vec3 specular)

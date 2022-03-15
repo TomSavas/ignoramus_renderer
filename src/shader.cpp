@@ -264,7 +264,7 @@ int Shader::GetBinding(const char* resource)
     {
         char errorMsg[1024];
         glGetProgramInfoLog(id, 1024, NULL, (GLchar*) &errorMsg);
-        LOG_ERROR("Shader", "\tFailed linking 0x%X:\n\t", descriptor.Hash(), errorMsg);
+        LOG_ERROR("Shader", "\tFailed linking 0x%X:\n\t%s", descriptor.Hash(), errorMsg);
         glDeleteProgram(id);
 
         return false;

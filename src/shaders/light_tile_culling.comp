@@ -53,11 +53,8 @@ struct PointLight
     //float radius;
     //float padding[3];
 };
-#define MAX_DIRECTIONAL_LIGHTS 32
 layout (std430, binding=PointLights_AUTO_BINDING) buffer PointLights
 {
-    //DirectionalLight directionalLights[MAX_DIRECTIONAL_LIGHTS];
-    //int directionalLightCount = 0;
     PointLight pointLights[MAX_POINT_LIGHTS];
     int pointLightCount;
 };
@@ -75,7 +72,7 @@ float linearizeDepthFromCameraParams(float depth)
 
 uniform sampler2D tex_depth;
 
-#define MAX_LIGHTS_PER_TILE (4096 + 2048 )
+#define MAX_LIGHTS_PER_TILE (4096 + 2048)
 void main()
 {
     uint tileId = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
@@ -90,16 +87,11 @@ void main()
     }
     barrier();
 
-    //vec2 tileSizeInPixels = vec2(1920.f, 1080.f) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
     vec2 tileSizeInPixels = vec2(1920.f, 1080.f) / gl_NumWorkGroups.xy;
     vec2 threadSizeInPixels = tileSizeInPixels / gl_WorkGroupSize.xy;
     vec2 topLeftTilePixel = gl_WorkGroupID.xy * tileSizeInPixels;
     vec2 uv = topLeftTilePixel + (gl_LocalInvocationID.xy) * threadSizeInPixels;
     uv = uv / vec2(1920.f, 1080.f);
-
-
-    //vec2 uv = (gl_WorkGroupSize.xy * gl_WorkGroupID.xy + tileSizeInPixels / gl_LocalInvocationID.xy) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
-    //vec2 uv = (gl_WorkGroupSize.xy * gl_WorkGroupID.xy + gl_LocalInvocationID.xy * tileSizeInPixels) / (gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
     uv.y = 1.f - uv.y;
 
     float depth = texture(tex_depth, uv).r;
@@ -118,7 +110,6 @@ void main()
 
     shared uint localLightIdCount;
     shared uint localLightIds[MAX_LIGHTS_PER_TILE];
-    //shared uint localLightIds[MAX_POINT_LIGHTS];
     shared vec4 frustumPlanes[6];
     if (gl_LocalInvocationIndex == 0)
     {

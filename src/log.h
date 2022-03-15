@@ -42,7 +42,6 @@ inline char* annotateLineNumbers(const char* str)
     lastNewline = str;
 
     int maxLineMagnitude = log10(lineCount);
-    printf("log(%d)=%d\n", lineCount, maxLineMagnitude);
     char* annotatedStr = (char*) malloc(sizeof(char) * (strlen(str) + lineCount * (maxLineMagnitude + 2 + 3) + 1));
     annotatedStr[0] = '\0';
 

@@ -656,9 +656,9 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         ASSERT(false);
                         break;
                 }
-                //LOG_WARN("", "");
 
-                if (strcmp(renderpass.name, "Depth peeling pass") == 0 && j == 0)
+                // TODO: clears the secondary depth buffer. AttachmentClearOpts should be handling this
+                if (strcmp(renderpass.name, "Depth peeling pass") == 0 && j == 0 && (subpassAttachment.useAs != nullptr && strcmp(subpassAttachment.useAs, "greater_depth") == 0))
                 {
                     float clearValue = 0.f;
                     glClearTexImage(attachmentId, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &clearValue);
@@ -710,14 +710,18 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
 
             subpass.shader->AddDummyForUnboundTextures(dummyTextureUnit);
 
+            //glMemoryBarrier(GL_ALL_BARRIER_BITS);
             if (subpass.acceptedMeshTags == COMPUTE)
             {
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT);
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
                 glDispatchCompute(subpass.settings.computeWorkGroups.x, subpass.settings.computeWorkGroups.y, subpass.settings.computeWorkGroups.z);
                 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT);
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             }
+            //glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
             for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
             {

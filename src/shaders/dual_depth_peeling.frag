@@ -47,15 +47,30 @@ uniform sampler2D previousFrontBlender;
 #define MAX_DEPTH 1.f
 
 vec3 calculateDiffuse(vec3 color, vec3 normal, vec3 lightDir);
-vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity, float specularPower);
+//vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity, float specularPower);
+vec3 calculateSpecular(vec3 color, vec3 pos, vec3 normal, vec3 cameraPos, vec3 lightDir, float specularity);
 vec3 composeColor(float ambientIntensity, float shadowIntensity, vec3 ambientColor, vec3 diffuse, vec3 specular);
+
+vec3 shade(vec3 pos, vec3 color, vec3 normal, float specularity, float specularStrength, vec2 uv);
+vec3 gammaCorrect(vec3 color, float gamma);
+
+vec4 under(vec4 backColor, vec4 frontColor)
+{
+    vec4 blendedColor;
+    blendedColor.rgb = frontColor.rgb + backColor.rgb * backColor.a * (1.f - frontColor.a);
+    blendedColor.a = frontColor.a + backColor.a * (1.f - frontColor.a);
+
+    return blendedColor;
+}
 
 void main()
 {
     float fragDepth = gl_FragCoord.z;
 
-    vec2 previousDepth = texture(previousDepthBlender, gl_FragCoord.xy / vec2(1920.f, 1080.f)).xy;
-    vec4 previousFront = texture(previousFrontBlender, gl_FragCoord.xy / vec2(1920.f, 1080.f));
+    vec2 uv = gl_FragCoord.xy / vec2(viewportWidth, viewportHeight);
+
+    vec2 previousDepth = texture(previousDepthBlender, uv).xy;
+    vec4 previousFront = texture(previousFrontBlender, uv);
 
     minMaxDepth = vec2(-MAX_DEPTH);
     frontBlender = previousFront;
@@ -63,7 +78,7 @@ void main()
 
     float nearestDepth = -previousDepth.x;
     float farthestDepth = previousDepth.y;
-    float alphaMultiplier = 1.0 - previousFront.w;
+    float alphaMultiplier = 1.0 - previousFront.a;
 
     if (fragDepth < nearestDepth || fragDepth > farthestDepth) 
     {
@@ -76,19 +91,23 @@ void main()
         return;
     }
 
-    vec3 diffuse = calculateDiffuse(tintAndOpacity.rgb, Normal, directionalLightDir.xyz);
-    vec3 specular = calculateSpecular(tintAndOpacity.rgb, Pos, Normal, cameraPos.xyz, directionalLightDir.xyz, 10.f, specularPower);
-    vec4 color = vec4(composeColor(0.1f, 0.f, tintAndOpacity.rgb, diffuse, specular), tintAndOpacity.a);
+    //vec3 diffuse = calculateDiffuse(tintAndOpacity.rgb, Normal, directionalLightDir.xyz);
+    //vec3 specular = calculateSpecular(tintAndOpacity.rgb, Pos, Normal, cameraPos.xyz, directionalLightDir.xyz, 10.f);
+    //vec4 color = vec4(composeColor(0.1f, 0.f, tintAndOpacity.rgb, diffuse, specular), tintAndOpacity.a);
     //vec4 color = tintAndOpacity;
     minMaxDepth = vec2(-MAX_DEPTH);
 
+    vec4 color = vec4(gammaCorrect(shade(Pos, tintAndOpacity.rgb, Normal, 256.f, 5.f, uv), gamma), tintAndOpacity.a);
+
     if (fragDepth == nearestDepth) 
     {
-        frontBlender.xyz += color.rgb * color.a * alphaMultiplier;
-        frontBlender.w = 1.0 - alphaMultiplier * (1.0 - color.a);
+        frontBlender = under(color, previousFront);
+        //frontBlender.xyz += color.rgb * color.a * alphaMultiplier;
+        //frontBlender.w = 1.0 - alphaMultiplier * (1.0 - color.a);
     } 
     else 
     {
-        tempBackBlender += color;
+        tempBackBlender = color;
+        //tempBackBlender = tintAndOpacity;
     }
 }

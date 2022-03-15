@@ -75,7 +75,7 @@ struct Scene
         PointLight(glm::vec4 color = glm::vec4(1.f, 1.f, 1.f, 0.f), glm::vec4 pos = glm::vec4(0, 0, 0, 0), float radius = 1.f) : color(color), pos(pos) {}//, radius(radius) {}
     };
 
-#define MAX_POINT_LIGHTS 32768
+#define MAX_POINT_LIGHTS 16348
     struct Lights
     {
         PointLight pointLights[MAX_POINT_LIGHTS];

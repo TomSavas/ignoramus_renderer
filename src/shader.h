@@ -23,6 +23,7 @@
 #define COMMON_SHADER SHADER_PATH "common.glsl"
 #define VERT_COMMON_SHADER SHADER_PATH "common.vert"
 #define FRAG_COMMON_SHADER SHADER_PATH "common.frag"
+#define LIGHTING_COMMON_SHADER SHADER_PATH "lighting_common.frag"
 
 struct ShaderDescriptor
 {
