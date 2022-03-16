@@ -119,6 +119,10 @@ void PassSettings::Apply()
     glDepthFunc(depthFunc);
     glBlendEquation(blendEquation);
     glBlendFunc(srcBlendFactor, dstBlendFactor);
+    for (int i = 0; i < blendFactors.size(); i++)
+    {
+        glBlendFunci(i, blendFactors[i].srcFactor, blendFactors[i].dstFactor);
+    }
     // missing color masking
 }
 

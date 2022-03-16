@@ -76,9 +76,16 @@ struct PassSettings
     glm::vec4 clearColor;
     GLenum clear;
 
+    struct BlendFactors
+    {
+        GLenum srcFactor;
+        GLenum dstFactor;
+    };
     GLenum blendEquation;
     GLenum srcBlendFactor;
     GLenum dstBlendFactor;
+    // Per color attachment blend factors
+    std::vector<BlendFactors> blendFactors;
      
     glm::ivec3 computeWorkGroups;
 
