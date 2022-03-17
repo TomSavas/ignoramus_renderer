@@ -727,36 +727,42 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
             }
             //glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
-            for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
+            for (int i = 0; i < sizeof(subpass.acceptedMeshTags) * 8; i++)
             {
-                // TODO: there is a horrible mismatch between the mesh tag in the scene meshes and
-                // what the mesh itself has... For now exploit this for disabling particle rendering
-                // while keeping it as a TRANSPARENT object
-                if (meshWithMaterial.mesh.meshTag == PARTICLE && !scene.renderParticles)
+                MeshTag acceptedMeshTag = (MeshTag)((int)subpass.acceptedMeshTags & (1 << i));
+                if (acceptedMeshTag == 0)
                 {
                     continue;
                 }
 
-                glm::mat4 model = meshWithMaterial.mesh.transform.Model();
-                bool fullyOutsideViewFrustum = meshWithMaterial.mesh.aabbModelSpace.ViewFrustumIntersect(scene.camera.MVP(model));
-                if (fullyOutsideViewFrustum && subpass.acceptedMeshTags != SCREEN_QUAD)
+                for (MeshWithMaterial& meshWithMaterial : scene.meshes[acceptedMeshTag])
                 {
-                    totalCulled++;
-                    continue;
+                    if (meshWithMaterial.mesh.meshTag == PARTICLE && !scene.renderParticles)
+                    {
+                        continue;
+                    }
+
+                    glm::mat4 model = meshWithMaterial.mesh.transform.Model();
+                    bool fullyOutsideViewFrustum = meshWithMaterial.mesh.aabbModelSpace.ViewFrustumIntersect(scene.camera.MVP(model));
+                    if (fullyOutsideViewFrustum && subpass.acceptedMeshTags != SCREEN_QUAD)
+                    {
+                        totalCulled++;
+                        continue;
+                    }
+                    
+                    // TODO: not necessary if already bound
+                    //       even if bound and changed can only partially update
+                    meshWithMaterial.material->Bind();
+                    meshWithMaterial.material->UpdateData();
+
+                    glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
+                    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);
+                    //glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+                    // TODO: Should be reworked - there should be some sort of communication between the shader and model here.
+                    // Shader dictates what textures it needs, the model provides them
+                    meshWithMaterial.mesh.Render(*subpass.shader);
                 }
-                
-                // TODO: not necessary if already bound
-                //       even if bound and changed can only partially update
-                meshWithMaterial.material->Bind();
-                meshWithMaterial.material->UpdateData();
-
-                glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
-                glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);
-                //glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-                // TODO: Should be reworked - there should be some sort of communication between the shader and model here.
-                // Shader dictates what textures it needs, the model provides them
-                meshWithMaterial.mesh.Render(*subpass.shader);
             }
 
             clock_t subpassEndTime = clock();
