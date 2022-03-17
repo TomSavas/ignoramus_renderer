@@ -41,7 +41,9 @@ struct TransparencyData
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
+    ivec4 doShadingIsParticle;
 };
+uniform sampler2D particle_tex;
 
 layout (binding = ppllHeads_AUTO_BINDING, r32ui) uniform uimage2D ppllHeads;
 layout (binding = transparentFragmentCount_AUTO_BINDING) uniform atomic_uint transparentFragmentCount;
@@ -80,7 +82,12 @@ void main()
     
     ppll[index].normal = normalize(normal);
 
-    ppll[index].color = tintAndOpacity;
+    vec4 color = tintAndOpacity;
+    if (doShadingIsParticle.y != 0)
+    {
+        color = color * texture(particle_tex, TexCoords);
+    }
+    ppll[index].color = color;
     ppll[index].pos = WorldFragPos;
     ppll[index].depth = gl_FragCoord.z;
     ppll[index].nextFragmentIndex = lastHead;

@@ -729,6 +729,14 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
 
             for (MeshWithMaterial& meshWithMaterial : scene.meshes[subpass.acceptedMeshTags])
             {
+                // TODO: there is a horrible mismatch between the mesh tag in the scene meshes and
+                // what the mesh itself has... For now exploit this for disabling particle rendering
+                // while keeping it as a TRANSPARENT object
+                if (meshWithMaterial.mesh.meshTag == PARTICLE && !scene.renderParticles)
+                {
+                    continue;
+                }
+
                 glm::mat4 model = meshWithMaterial.mesh.transform.Model();
                 bool fullyOutsideViewFrustum = meshWithMaterial.mesh.aabbModelSpace.ViewFrustumIntersect(scene.camera.MVP(model));
                 if (fullyOutsideViewFrustum && subpass.acceptedMeshTags != SCREEN_QUAD)
@@ -740,6 +748,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                 // TODO: not necessary if already bound
                 //       even if bound and changed can only partially update
                 meshWithMaterial.material->Bind();
+                meshWithMaterial.material->UpdateData();
 
                 glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
                 glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);

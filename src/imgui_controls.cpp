@@ -167,6 +167,7 @@ void ShowSceneSettings(Scene& scene, bool* open)
     if (ImGui::Begin("Scene settings", open))
     {
         ImGui::Checkbox("Wireframe", (bool*)&scene.sceneParams.wireframe);
+        ImGui::Checkbox("Particles", (bool*)&scene.renderParticles);
 
         ImGui::SliderFloat("Gamma", &scene.sceneParams.gamma, 1, 10);
         ImGui::SliderFloat("SpecularPower", &scene.sceneParams.specularPower, 1, 1000);

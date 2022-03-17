@@ -6,6 +6,7 @@ layout (location = 3) in vec2 vert_uv;
 
 out vec3 Pos;
 out vec3 Normal;
+out vec2 Uv;
 
 layout (std140) uniform CameraParams
 {
@@ -24,6 +25,7 @@ layout (std140) uniform ModelParams
 void main()
 {
     Pos = (model * vec4(vert_pos, 1.f)).xyz;
+    Uv = vert_uv;
 
     mat3 normalRecalculationMatrix = transpose(inverse(mat3(model)));
     Normal = normalize(normalRecalculationMatrix * vert_norm);

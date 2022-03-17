@@ -8,6 +8,7 @@
 #include "mesh.h"
 #include "material.h"
 #include "aabb.h"
+#include "particle_sys.h"
 #include "render_pipeline.h"
 
 // TODO: future optimization for instancing
@@ -46,6 +47,8 @@ struct Scene
         float viewportHeight;
     } sceneParams;
     unsigned int sceneParamsUboId;       
+    // Separate - no need to pass to shaders
+    bool renderParticles = false;
 
     struct CameraParams
     {
@@ -91,6 +94,8 @@ struct Scene
         glm::vec4 directionalBiasAndAngleBias;
     } lighting;
     unsigned int lightingUboId;
+
+    std::vector<ParticleSys> particleSystems;
 
     Scene();
 

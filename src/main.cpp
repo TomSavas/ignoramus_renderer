@@ -73,6 +73,13 @@ int main(void)
             scene.lights.pointLights[i].pos.z = sin(angle) * d / 2.f;
         }
 
+        // Update particle system
+        for (auto& particleSys : scene.particleSystems)
+        {
+            //particleSys.Update(0.016f, scene.camera.transform.pos, scene.camera.transform.Up());   
+            particleSys.Update(0.016f, scene.camera.transform);   
+        }
+
         // TODO: remove, temporarily here for moving the directional light manually
         if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
         {
