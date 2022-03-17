@@ -110,13 +110,6 @@ Scene TestScene()
 
     for (auto& mesh : sphere.meshes)
     {
-        //mesh.transform = Transform(glm::vec3(500.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        //mesh.transform = Transform(glm::vec3(0.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        //mesh.transform = Transform(glm::vec3(-500.f, 200.f, 500.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
-
         mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
         mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
@@ -124,33 +117,12 @@ Scene TestScene()
         mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
 
-        //mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        //mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        //mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
-
-        //mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        //mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        //mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
-
         mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
         mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
         mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
         scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
-        
-        //mesh.transform = Transform(glm::vec4(1500.f + 500.f + 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        //mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        //mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        //scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
 
         mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
         scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
@@ -170,7 +142,7 @@ Scene TestScene()
         sprintf(smokeTextures[i], "../assets/textures/smoke_%02d.png", i % 10 + 1);
     }
 
-#define PARTICLE_COUNT 400
+#define PARTICLE_COUNT 300
     std::vector<MeshWithMaterial*> particles;
     for (int i = 0; i < PARTICLE_COUNT; i++)
     {

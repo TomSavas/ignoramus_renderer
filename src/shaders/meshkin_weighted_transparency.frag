@@ -9,6 +9,7 @@ layout (std140) uniform SceneParams
 {
     int pixelSize;
     bool wireframe;
+    bool useDepthLightCullingOptimisation;
     float gamma;
     float specularPower;
     float viewportWidth;

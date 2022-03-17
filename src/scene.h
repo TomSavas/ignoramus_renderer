@@ -41,6 +41,7 @@ struct Scene
     {
         int pixelSize;
         int wireframe;
+        int useDepthLightCullingOptimisation;
         float gamma;
         float specularPower;
         float viewportWidth;

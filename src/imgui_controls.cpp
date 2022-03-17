@@ -167,6 +167,7 @@ void ShowSceneSettings(Scene& scene, bool* open)
     if (ImGui::Begin("Scene settings", open))
     {
         ImGui::Checkbox("Wireframe", (bool*)&scene.sceneParams.wireframe);
+        ImGui::Checkbox("Use depth light culling optimisation", (bool*)&scene.sceneParams.useDepthLightCullingOptimisation);
         ImGui::Checkbox("Particles", (bool*)&scene.renderParticles);
 
         ImGui::SliderFloat("Gamma", &scene.sceneParams.gamma, 1, 10);
@@ -201,7 +202,10 @@ void ShowControls(GLFWwindow* window, std::vector<NamedPipeline>& pipelines, int
         {
             for (int i = 0; i < pipelines.size(); i++)
             {
-                ImGui::RadioButton(pipelines[i].name, &activePipelineIndex, i);
+                if (ImGui::RadioButton(pipelines[i].name, &activePipelineIndex, i))
+                {
+                    scene.sceneParams.useDepthLightCullingOptimisation = strstr(pipelines[i].name, "PPLL") != NULL ? 1 : 0;
+                }
             }
             ImGui::EndMenu();
         }
