@@ -36,3 +36,8 @@ bool AABB::ViewFrustumIntersect(glm::mat4 frustumTransform)
            infrontBound[Y_BOUND] == BOUND_COUNT || behindBound[Y_BOUND] == BOUND_COUNT || 
            infrontBound[Z_BOUND] == BOUND_COUNT || behindBound[Z_BOUND] == BOUND_COUNT;
 }
+
+glm::vec3 AABB::Extents()
+{
+    return (max - min) * 0.5f;
+}

@@ -4,7 +4,7 @@ layout (location = 1) in vec3 vert_norm;
 layout (location = 2) in vec3 vert_tan;
 layout (location = 3) in vec2 vert_uv;
 
-out vec4 FragPos;
+out vec3 Pos;
 
 layout (std140) uniform CameraParams
 {
@@ -31,6 +31,6 @@ layout (std140) uniform ModelParams
 
 void main()
 {
-    FragPos = directionalLightViewProjection * model * vec4(vert_pos, 1.f);
+    Pos = vec3(directionalLightViewProjection * model * vec4(vert_pos, 1.f));
     gl_Position = directionalLightViewProjection * model * vec4(vert_pos, 1.f);
 }

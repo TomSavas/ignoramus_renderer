@@ -753,7 +753,11 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                     // TODO: not necessary if already bound
                     //       even if bound and changed can only partially update
                     meshWithMaterial.material->Bind();
-                    meshWithMaterial.material->UpdateData();
+                    
+                    if (meshWithMaterial.mesh.meshTag == PARTICLE)
+                    {
+                        meshWithMaterial.material->UpdateData();
+                    }
 
                     glBindBuffer(GL_UNIFORM_BUFFER, materialUbo);
                     glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &model, GL_STATIC_DRAW);

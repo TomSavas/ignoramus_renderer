@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "model.h"
 
 Model::Model(const char *filepath, std::vector<std::pair<std::string, std::string>> texturesWithPaths)
@@ -5,8 +7,13 @@ Model::Model(const char *filepath, std::vector<std::pair<std::string, std::strin
     objl::Loader loader;
     loader.LoadFile(filepath);
 
+    aabbModelSpace = AABB(glm::vec3(std::numeric_limits<float>::max()), glm::vec3(std::numeric_limits<float>::min()));
     for (int i = 0; i < loader.LoadedMeshes.size(); i++)
+    {
         meshes.push_back(Mesh(loader.LoadedMeshes[i], OPAQUE, texturesWithPaths));
+        aabbModelSpace.min = glm::min(aabbModelSpace.min, meshes[i].aabbModelSpace.min);
+        aabbModelSpace.max = glm::max(aabbModelSpace.max, meshes[i].aabbModelSpace.max);
+    }
 }
 
 Model::Model(objl::Mesh mesh, std::vector<std::pair<std::string, std::string>> texturesWithPaths)

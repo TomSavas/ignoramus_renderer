@@ -15,7 +15,7 @@ layout (std140) uniform SceneParams
 {
     int pixelSize;
     bool wireframe;
-    bool useDepthLightCullingOptimisation;
+    bool usePPLLDepthForLightCulling;
     float gamma;
     float specularPower;
     float viewportWidth;
@@ -81,6 +81,7 @@ float linearizeDepthFromCameraParams(float depth)
 }
 
 uniform sampler2D tex_depth;
+uniform sampler2D tex_proxy_depth;
 
 #define MAX_LIGHTS_PER_TILE (4096 + 2048)
 void main()
@@ -105,15 +106,23 @@ void main()
     uv.y = 1.f - uv.y;
 
     float depth = texture(tex_depth, uv).r;
-    atomicMin(minDepth, int(depth * 100000.f));
+    float proxyDepth = texture(tex_proxy_depth, uv).r;
+    //if (!useMaxDepthForLightCullingOnly)
+    {
+        atomicMin(minDepth, int(min(depth, proxyDepth) * 100000.f));
+        //atomicMin(minDepth, int(depth * 100000.f));
+    }
     atomicMax(maxDepth, int(depth * 100000.f));
 
-    uint head = imageLoad(ppllHeads, ivec2(uv.xy * vec2(1920.f, 1080.f))).r;
-#define NO_TRANSPARENCY_INDEX 0xffffffff
-    if (head != NO_TRANSPARENCY_INDEX)
+    if (usePPLLDepthForLightCulling)
     {
-        float transparencyDepth = ppll[head].depth; 
-        atomicMin(minDepth, int(transparencyDepth * 100000.f));
+        uint head = imageLoad(ppllHeads, ivec2(uv.xy * vec2(1920.f, 1080.f))).r;
+#define NO_TRANSPARENCY_INDEX 0xffffffff
+        if (head != NO_TRANSPARENCY_INDEX)
+        {
+            float transparencyDepth = ppll[head].depth; 
+            atomicMin(minDepth, int(transparencyDepth * 100000.f));
+        }
     }
 
     barrier();
@@ -148,7 +157,6 @@ void main()
     }
     barrier();
     
-    int frustumsToUseForCulling = useDepthLightCullingOptimisation ? 6 : 4;
     uint lightsToCheckPerThread = (MAX_POINT_LIGHTS + threadsPerWorkGroup - 1) / threadsPerWorkGroup;
     for (int i = 0; i < lightsToCheckPerThread; i++)
     {
@@ -159,7 +167,7 @@ void main()
 
         bool overlapsFrustum = true;
         vec4 lightPosInViewSpace = view * vec4(light.pos.xyz, 1.f);
-        for (int j = 0; j < frustumsToUseForCulling && overlapsFrustum; j++)
+        for (int j = 0; j < 6 && overlapsFrustum; j++)
         {
             float distance = dot(frustumPlanes[j], lightPosInViewSpace); // Distance of the point from the plane
             // https://gamedev.stackexchange.com/questions/79172/checking-if-a-vector-is-contained-inside-a-viewing-frustum

@@ -32,7 +32,7 @@ void main()
     float weight = clamp(pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
 
     //vec3 color = tintAndOpacity.rgb;
-    vec3 color = shade(Pos, tintAndOpacity.rgb, Normal, 256.f, 10.f, fragmentPos);
+    vec3 color = shade(Pos, tintAndOpacity.rgb, Normal, 1.f, 1.f, fragmentPos);
     // store pixel color accumulation
     accumulator = vec4(color * alpha, alpha) * weight;
 

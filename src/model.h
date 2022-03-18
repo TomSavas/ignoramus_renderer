@@ -19,6 +19,7 @@ public:
     Model(const char *filepath, std::vector<std::pair<std::string, std::string>> texturesWithPaths = std::vector<std::pair<std::string, std::string>>());
     Model(objl::Mesh mesh, std::vector<std::pair<std::string, std::string>> texturesWithPaths = std::vector<std::pair<std::string, std::string>>());
 
+    AABB aabbModelSpace;
     static Model *DoubleSidedQuad(glm::vec3 scale);
 
     void Render(Shader &shader);

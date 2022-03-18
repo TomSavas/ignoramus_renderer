@@ -10,6 +10,22 @@
 #define STRINGIFY(x) #x
 #define STRINGIFY_VALUE(x) STRINGIFY(x) 
 
+void AddModel(Model& model, Transform& transform, MeshTag meshTag, Material* material, Scene& scene)
+{
+    for (auto& mesh : model.meshes)
+    {
+        mesh.transform = transform;
+        scene.meshes[meshTag].push_back({ mesh, material });
+    }
+}
+
+void AddProxyAABBModel(Model& proxyModel, Transform& proxiedTransform, AABB& proxiedAABB, Material* material, Scene& scene)
+{
+    Transform transform = proxiedTransform;
+    transform.scale *= proxiedAABB.Extents() * 2.f;
+    AddModel(proxyModel, transform, PROXY, material, scene);
+}
+
 Scene TestScene() 
 {
     Scene scene; 
@@ -72,23 +88,8 @@ Scene TestScene()
     scene.sceneParams.viewportWidth = 1920.f;
     scene.sceneParams.viewportHeight = 1080.f;
 
-    //Model transparentModel = Model("../assets/dragon.obj");
-    Model dragon = Model("../assets/dragon.obj");
-    Model sponza = Model("../assets/sponza/sponza.obj");
-    //Model backpack = Model("../assets/backpack/backpack.obj");
-    Model sphere = Model("../assets/sphere/sphere.obj");
+    Material* proxyMat = new EmptyMaterial();
     Material* opaqueMat = new OpaqueMaterial();
-    for (auto& mesh : sponza.meshes)
-    {
-        mesh.transform = Transform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(5.f, 5.f, 5.f));
-        scene.meshes[mesh.meshTag].push_back({ mesh, opaqueMat });
-    }
-    for (auto& mesh : dragon.meshes)
-    {
-        mesh.transform = Transform(glm::vec3(0.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, -glm::pi<float>(), 0.f)), glm::vec3(500.f));
-        scene.meshes[OPAQUE].push_back({ mesh, opaqueMat });
-    }
-
     TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.1f);
     blueTransparentMat->Bind();
     blueTransparentMat->UpdateData();
@@ -98,38 +99,60 @@ Scene TestScene()
     TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.4f);
     redTransparentMat->Bind();
     redTransparentMat->UpdateData();
-    for (auto& mesh : dragon.meshes)
+
+    Model dragon = Model("../assets/dragon.obj");
+    Model sponza = Model("../assets/sponza/sponza.obj");
+    Model sphere = Model("../assets/sphere/sphere.obj");
+    Model cube = Model("../assets/cube/cube.obj");
+
+    Transform sponzaTransform(glm::vec3(0.f, -10.f, 0.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(5.f, 5.f, 5.f));
+    AddModel(sponza, sponzaTransform, OPAQUE, opaqueMat, scene);
+
+    Transform opaqueDragonTransform(glm::vec3(0.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, -glm::pi<float>(), 0.f)), glm::vec3(500.f));
+    AddModel(dragon, opaqueDragonTransform, OPAQUE, opaqueMat, scene);
+    AddProxyAABBModel(cube, opaqueDragonTransform, dragon.aabbModelSpace, proxyMat, scene);
+
+    Transform transparentBlueDragonTransform(glm::vec3(0.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+    AddModel(dragon, transparentBlueDragonTransform, TRANSPARENT, blueTransparentMat, scene);
+    AddProxyAABBModel(cube, transparentBlueDragonTransform, dragon.aabbModelSpace, proxyMat, scene);
+
+    Transform transparentGreenDragonTransform(glm::vec3(500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+    AddModel(dragon, transparentGreenDragonTransform, TRANSPARENT, greenTransparentMat, scene);
+    AddProxyAABBModel(cube, transparentGreenDragonTransform, dragon.aabbModelSpace, proxyMat, scene);
+
+    Transform transparentRedDragonTransform(glm::vec3(-500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
+    AddModel(dragon, transparentRedDragonTransform, TRANSPARENT, redTransparentMat, scene);
+    AddProxyAABBModel(cube, transparentRedDragonTransform, dragon.aabbModelSpace, proxyMat, scene);
+
+    Transform greenTransforms[] =
     {
-        mesh.transform = Transform(glm::vec3(0.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
-    }
-
-    for (auto& mesh : sphere.meshes)
+        Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f))
+    };
+    Transform blueTransforms[] =
     {
-        mesh.transform = Transform(glm::vec3(1500.f + 500.f + 400.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(1500.f + -500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+        Transform(glm::vec3(1500.f + 0.f + 200.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f))
+    };
+    Transform redTransforms[] =
+    {
+        Transform(glm::vec3(1500.f + -500.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f)),
+        Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f))
+    };
 
-        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(1.f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+    for (int i = 0; i < 3; i++)
+    {
+        AddModel(sphere, greenTransforms[i], TRANSPARENT, greenTransparentMat, scene);
+        AddProxyAABBModel(cube, greenTransforms[i], sphere.aabbModelSpace, proxyMat, scene);
 
-        mesh.transform = Transform(glm::vec3(-1500.f + 500.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, greenTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + 0.f - 200.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, blueTransparentMat });
-        mesh.transform = Transform(glm::vec3(-1500.f + -500.f - 400.f, 200.f, -600.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(0.95f));
-        scene.meshes[TRANSPARENT].push_back({ mesh, redTransparentMat });
+        AddModel(sphere, blueTransforms[i], TRANSPARENT, blueTransparentMat, scene);
+        AddProxyAABBModel(cube, blueTransforms[i], sphere.aabbModelSpace, proxyMat, scene);
+
+        AddModel(sphere, redTransforms[i], TRANSPARENT, redTransparentMat, scene);
+        AddProxyAABBModel(cube, redTransforms[i], sphere.aabbModelSpace, proxyMat, scene);
     }
 
     scene.meshes[SCREEN_QUAD].push_back({ Mesh::ScreenQuadMesh(), new EmptyMaterial() });
@@ -155,19 +178,32 @@ Scene TestScene()
         scene.meshes[PARTICLE].push_back({ mesh, new TransparentMaterial(.25f, .25f, .25f, .75f, i < PARTICLE_COUNT/2, true) });
     }
 
+
     for (int i = 0; i < PARTICLE_COUNT/2; i++)
     {
         particles.push_back(&scene.meshes[PARTICLE][scene.meshes[PARTICLE].size() - PARTICLE_COUNT + i]);
     }
-    scene.particleSystems.push_back(ParticleSys(particles, AABB(glm::vec3(3500.f, 0.f, -500.f), glm::vec3(4100.f, 0.f, 100.f)),
-                glm::vec4(0.75f, 0.75f, 0.75f, 1.f), PARTICLE_COUNT/2, 2.5f, 1000.f));
+    glm::vec4 color(0.75f, 0.75f, 0.75f, 1.f);
+    AABB spawnZone(glm::vec3(3500.f, 0.f, -500.f), glm::vec3(4100.f, 0.f, 100.f));
+    scene.particleSystems.push_back(ParticleSys(particles, spawnZone, color, PARTICLE_COUNT/2, 2.5f, 1000.f));
+    AABB particleAABB = AABB(spawnZone.min + glm::vec3(0.f, 700.f, 0.f), spawnZone.max + glm::vec3(0.f, 700.f, 0.f));
+    Transform particleSystemCenter = Transform(particleAABB.min + particleAABB.Extents());
+    AddProxyAABBModel(cube, particleSystemCenter, particleAABB, proxyMat, scene);
+    particleSystemCenter.scale = glm::vec3(1400.f);
+    AddModel(cube, particleSystemCenter, PROXY, opaqueMat, scene);
     particles.clear();
+
     for (int i = 0; i < PARTICLE_COUNT/2; i++)
     {
         particles.push_back(&scene.meshes[PARTICLE][scene.meshes[PARTICLE].size() - PARTICLE_COUNT/2 + i]);
     }
-    scene.particleSystems.push_back(ParticleSys(particles, AABB(glm::vec3(-4600.f, 0.f, -500.f), glm::vec3(-4200.f, 1.f, 100.f)),
-                glm::vec4(0.75f, 0.75f, 0.75f, 1.f), PARTICLE_COUNT/2, 2.5f, 1000.f));
+    spawnZone = AABB(glm::vec3(-4600.f, 0.f, -500.f), glm::vec3(-4200.f, 1.f, 100.f));
+    scene.particleSystems.push_back(ParticleSys(particles, spawnZone, color, PARTICLE_COUNT/2, 2.5f, 1000.f));
+    particleAABB = AABB(spawnZone.min + glm::vec3(0.f, 700.f, 0.f), spawnZone.max + glm::vec3(0.f, 700.f, 0.f));
+    particleSystemCenter = Transform(particleAABB.min + particleAABB.Extents());
+    AddProxyAABBModel(cube, particleSystemCenter, particleAABB, proxyMat, scene);
+    particleSystemCenter.scale = glm::vec3(1400.f);
+    AddModel(cube, particleSystemCenter, PROXY, opaqueMat, scene);
 
     return scene;
 }
@@ -187,7 +223,7 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
     Shader& directionalShadowmapGenShader = shaders.GetShader(ShaderDescriptor(
         {
             ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.vert", ShaderDescriptor::VERTEX_SHADER),
-            ShaderDescriptor::File(SHADER_PATH "directional_shadowmap_gen.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            ShaderDescriptor::File(SHADER_PATH "empty.frag", ShaderDescriptor::FRAGMENT_SHADER)
         }, globalAttachments.DefineValues()));
     directionalShadowmapGenPass.AddSubpass("Gen subpass", &directionalShadowmapGenShader, OPAQUE,
         {
@@ -196,6 +232,21 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             SubpassAttachment(&shadowmap, SubpassAttachment::AS_DEPTH)
         });
 
+    // Proxy geometry
+    Shader& noShadingShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "empty.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues()));
+
+    Renderpass& proxyDepthRenderpass = pipeline.AddPass("Proxy geometry min depth pass");
+    RenderpassAttachment& proxyMinDepth = proxyDepthRenderpass.AddAttachment(RenderpassAttachment("proxy_min_depth", AttachmentFormat::DEPTH));
+    Subpass& subpass = proxyDepthRenderpass.AddSubpass("Forward transparency subpass", &noShadingShader, PROXY, 
+        {
+            SubpassAttachment(&proxyDepthRenderpass.AddAttachment(RenderpassAttachment("unnecessary color", AttachmentFormat::FLOAT_4)), SubpassAttachment::AS_COLOR),
+            SubpassAttachment(&proxyMinDepth, SubpassAttachment::AS_DEPTH)
+        });
 
 
 #define DEFERRED_PASS "Deferred pass"
@@ -231,6 +282,7 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
     deferredLightingPass.AddSubpass(LIGHT_TILE_CULLING_SUBPASS, &lightTileCullingShader, COMPUTE,
         {
             SubpassAttachment(&deferredDepth,    SubpassAttachment::AS_TEXTURE, "tex_depth"),
+            SubpassAttachment(&proxyMinDepth,    SubpassAttachment::AS_TEXTURE, "tex_proxy_depth"),
             SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
@@ -342,7 +394,9 @@ RenderPipeline WeightedBlendedTransparencyPipeline(PipelineWithShadowmap pipelin
     settings.ignoreApplication = false;
     settings.ignoreClear = true;
     settings.enable = { GL_BLEND, GL_DEPTH_TEST };
-    settings.depthMask = GL_FALSE;
+    settings.depthMask = GL_TRUE;
+    settings.depthFunc = GL_ALWAYS;
+    //settings.depthMask = GL_FALSE;
     settings.blendFactors.push_back({GL_ONE, GL_ONE});
     settings.blendFactors.push_back({GL_ZERO, GL_ONE_MINUS_SRC_COLOR});
     settings.blendEquation = GL_FUNC_ADD;
