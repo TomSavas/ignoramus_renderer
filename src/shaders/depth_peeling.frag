@@ -19,7 +19,7 @@ layout (std140) uniform SceneParams
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
-    ivec4 doShadingIsParticle;
+    vec4 specularitySpecularStrDoShadingIsParticle;
 };
 uniform sampler2D particle_tex;
 
@@ -42,17 +42,19 @@ void main()
 
     //FragColor = vec4(gammaCorrect(shade(Pos, tintAndOpacity.rgb, Normal, 256.f, 10.f, fragmentPos), gamma), tintAndOpacity.a);
     vec4 color = tintAndOpacity;
-    if (doShadingIsParticle.y != 0)
+    if (specularitySpecularStrDoShadingIsParticle.w > 0)
     {
         color = color * texture(particle_tex, Uv);
     }
 
-    if (doShadingIsParticle.x == 0)
+    if (specularitySpecularStrDoShadingIsParticle.z <= 0)
     {
         FragColor = vec4(gammaCorrect(color.rgb, gamma), color.a);
     }
     else
     {
-        FragColor = vec4(gammaCorrect(shade(Pos, color.rgb, Normal, 256.f, 10.f, fragmentPos), gamma), color.a);
+        float specularity = specularitySpecularStrDoShadingIsParticle.x;
+        float specularStrength = specularitySpecularStrDoShadingIsParticle.y;
+        FragColor = vec4(gammaCorrect(shade(Pos, color.rgb, Normal, specularity, specularStrength, fragmentPos), gamma), color.a);
     }
 }

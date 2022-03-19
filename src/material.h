@@ -47,12 +47,14 @@ struct TransparentMaterial : public Material, public Identifiable<TransparentMat
     struct
     {
         glm::vec4 tintAndOpacity;
-        glm::ivec4 doShadingIsParticle;
+        glm::vec4 specularitySpecularStrDoShadingIsParticle;
     } resourceData;
 
-    TransparentMaterial(float r, float g, float b, float opacity, bool doShading = true, bool isParticle = false) 
+    TransparentMaterial(float r, float g, float b, float opacity, float specularity, float specularStrength,
+            bool doShading = true, bool isParticle = false) 
         : Material(sizeof(resourceData), Id(), &resourceData), 
-        resourceData({glm::vec4(r, g, b, opacity), glm::ivec4(doShading ? 1.f : 0.f, isParticle ? 1.f : 0.f, 0.f, 0.f)}) {}
+        resourceData({glm::vec4(r, g, b, opacity),
+                glm::vec4(specularity, specularStrength, doShading ? 1.f : 0.f, isParticle ? 1.f : 0.f)}) {}
 };
 
 struct OpaqueMaterial : public Material, public Identifiable<OpaqueMaterial>

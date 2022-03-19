@@ -40,6 +40,7 @@ uniform sampler2D shadow_map;
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
+    vec4 specularitySpecularStrDoShadingIsParticle;
 };
 
 uniform sampler2D previousDepthBlender;

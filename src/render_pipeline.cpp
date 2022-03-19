@@ -458,7 +458,7 @@ RenderpassAttachment& Renderpass::AddOutputAttachment()
     {
         char* outputAttachmentName = new char[256]; 
         sprintf(outputAttachmentName, "%s_output", name);
-        outputAttachment = &AddAttachment(RenderpassAttachment(outputAttachmentName, AttachmentFormat::FLOAT_3));
+        outputAttachment = &AddAttachment(RenderpassAttachment(outputAttachmentName, AttachmentFormat::FLOAT_4));
     }
 
     return *outputAttachment;   

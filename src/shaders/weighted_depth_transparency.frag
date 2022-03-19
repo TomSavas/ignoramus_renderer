@@ -20,7 +20,7 @@ layout (std140) uniform SceneParams
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
-    ivec4 doShadingIsParticle;
+    vec4 specularitySpecularStrDoShadingIsParticle;
 };
 uniform sampler2D particle_tex;
 
@@ -31,7 +31,7 @@ void main()
     vec2 fragmentPos = gl_FragCoord.xy / vec2(viewportWidth, viewportHeight);
 
     vec4 particleTextureColor = vec4(1.f);
-    if (doShadingIsParticle.y != 0)
+    if (specularitySpecularStrDoShadingIsParticle.w > 0)
     {
         particleTextureColor = texture(particle_tex, Uv);
     }
@@ -41,14 +41,17 @@ void main()
     // weight function
     float weight = clamp(pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
 
-    if (doShadingIsParticle.x != 0)
+    if (specularitySpecularStrDoShadingIsParticle.z > 0)
     {
-        color = vec4(shade(Pos, color.rgb, Normal, 256.f, 10.f, fragmentPos), color.a);
+        float specularity = specularitySpecularStrDoShadingIsParticle.x;
+        float specularStrength = specularitySpecularStrDoShadingIsParticle.y;
+        color = vec4(shade(Pos, color.rgb, Normal, specularity, specularStrength, fragmentPos), color.a);
     }
 
     // store pixel color accumulation
     accumulator = vec4(color.rgb * alpha, alpha) * weight;
 
     // store pixel revealage threshold
+    //revealage = min(alpha + doShadingIsParticleIsProxy.z, 1.f);
     revealage = alpha;
 }

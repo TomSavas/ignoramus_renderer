@@ -1,5 +1,5 @@
 #version 460
-layout (location = 0) out vec3 fragColor;
+layout (location = 0) out vec4 fragColor;
 
 layout (std140) uniform SceneParams
 {
@@ -18,5 +18,5 @@ vec3 shadeFromTex(vec2 uv);
 void main()
 {
     vec2 fragmentPos = gl_FragCoord.xy / vec2(viewportWidth, viewportHeight);
-    fragColor = gammaCorrect(shadeFromTex(fragmentPos), gamma);
+    fragColor = vec4(gammaCorrect(shadeFromTex(fragmentPos), gamma), 1.f);
 }

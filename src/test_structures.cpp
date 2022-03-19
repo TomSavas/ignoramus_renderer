@@ -90,13 +90,13 @@ Scene TestScene()
 
     Material* proxyMat = new EmptyMaterial();
     Material* opaqueMat = new OpaqueMaterial();
-    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.1f);
+    TransparentMaterial* blueTransparentMat = new TransparentMaterial(0.f, 0.f, 1.f, 0.1f, 256.f, 10.f);
     blueTransparentMat->Bind();
     blueTransparentMat->UpdateData();
-    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.2f);
+    TransparentMaterial* greenTransparentMat = new TransparentMaterial(0.f, 1.f, 0.f, 0.2f, 256.f, 10.f);
     greenTransparentMat->Bind();
     greenTransparentMat->UpdateData();
-    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.4f);
+    TransparentMaterial* redTransparentMat = new TransparentMaterial(1.f, 0.f, 0.f, 0.4f, 256.f, 10.f);
     redTransparentMat->Bind();
     redTransparentMat->UpdateData();
 
@@ -175,7 +175,7 @@ Scene TestScene()
         mesh.transform.scale = glm::vec3(300.f);
         mesh.textures["particle_tex"] = smokeTextures[i % 10];
         // Only shade particles in one cluster, leave the other unshaded
-        scene.meshes[PARTICLE].push_back({ mesh, new TransparentMaterial(.25f, .25f, .25f, .75f, i < PARTICLE_COUNT/2, true) });
+        scene.meshes[PARTICLE].push_back({ mesh, new TransparentMaterial(.1f, .1f, .1f, .75f, 6.f, 6.f, i < PARTICLE_COUNT/2, true) });
     }
 
 
@@ -288,7 +288,6 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
         }, lightTileCullingSettings);
-
 #define COMPOSITION_LIGHTING_SUBPASS "Composition-lighting subpass"
     Shader& deferredLightingShader = shaders.GetShader(ShaderDescriptor(
         {
@@ -297,6 +296,10 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
             ShaderDescriptor::File(SHADER_PATH "deferred_lighting.frag", ShaderDescriptor::FRAGMENT_SHADER)
         }, globalAttachments.DefineValues(deferredLightingPass.DefineValues())));
+    
+    PassSettings settings = PassSettings::DefaultSubpassSettings();
+    settings.ignoreApplication = false;
+    settings.depthMask = GL_FALSE;
     deferredLightingPass.AddSubpass(COMPOSITION_LIGHTING_SUBPASS, &deferredLightingShader, SCREEN_QUAD,
         {
             // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
@@ -310,7 +313,7 @@ PipelineWithShadowmap UnconfiguredDeferredPipeline(Renderpass& globalAttachments
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
             SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
-        });
+        }, settings);
 
     return { pipeline, &shadowmap };
 }
@@ -337,25 +340,35 @@ RenderPipeline UnsortedForwardTransparencyPipeline(Renderpass& globalAttachments
         }, globalAttachments.DefineValues()));
     PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
-    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
+    Renderpass* deferredPass;
+    for (int i = 0; i < pipelineWithShadowmap.pipeline.passes.size() && deferredPass == nullptr; i++)
+    {
+        Renderpass* pass = pipelineWithShadowmap.pipeline.passes[i];
+        if (pass == nullptr || strcmp(pass->name, DEFERRED_PASS) == 0)
+        {
+            deferredPass = pass;
+            break;
+        }
+    }
 
     PassSettings settings = PassSettings::DefaultOutputRenderpassSettings();
-    settings.ignoreApplication = false;
     settings.ignoreClear = true;
-    settings.enable = { GL_BLEND, };
+    settings.enable = { GL_BLEND, GL_DEPTH_TEST };
+    settings.depthMask = GL_FALSE;
     settings.srcBlendFactor = GL_SRC_ALPHA;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
-    Renderpass& forwardTransparencyRenderpass = pipelineWithShadowmap.pipeline.AddPass("Forward transparency pass", settings);
-    forwardTransparencyRenderpass.fbo = 0;
-
-    Subpass& subpass = forwardTransparencyRenderpass.AddSubpass("Forward transparency subpass", &forwardTransparencyShader, (MeshTag)(TRANSPARENT | PARTICLE), 
+    Subpass& subpass = deferredPass->AddSubpass("Forward transparency subpass", &forwardTransparencyShader, (MeshTag)(TRANSPARENT | PARTICLE), 
             {
+                SubpassAttachment(deferredPass->outputAttachment, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&deferredPass->GetAttachment("g_depth"), SubpassAttachment::AS_DEPTH),
                 SubpassAttachment(pipelineWithShadowmap.shadowmap, SubpassAttachment::AS_TEXTURE, "shadow_map"),
                 SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
                 SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
                 SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
                 SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
             }, settings);
+
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
 
     assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
     return pipelineWithShadowmap.pipeline;
@@ -386,24 +399,35 @@ RenderPipeline WeightedBlendedTransparencyPipeline(PipelineWithShadowmap pipelin
         pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
     }
 
-    Renderpass& weightedBlendedPass = pipelineWithShadowmap.pipeline.AddPass("Weighted blended transparency pass");
-    RenderpassAttachment& accumulator = weightedBlendedPass.AddAttachment(RenderpassAttachment("accumulator", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f))));
-    RenderpassAttachment& revealage = weightedBlendedPass.AddAttachment(RenderpassAttachment("revealage", AttachmentFormat::FLOAT_1, AttachmentClearOpts(glm::vec4(1.f))));
+    Renderpass* deferredPass;
+    for (int i = 0; i < pipelineWithShadowmap.pipeline.passes.size() && deferredPass == nullptr; i++)
+    {
+        Renderpass* pass = pipelineWithShadowmap.pipeline.passes[i];
+        if (pass == nullptr || strcmp(pass->name, DEFERRED_PASS) == 0)
+        {
+            deferredPass = pass;
+            break;
+        }
+    }
 
     PassSettings settings = PassSettings::DefaultSubpassSettings();
     settings.ignoreApplication = false;
     settings.ignoreClear = true;
     settings.enable = { GL_BLEND, GL_DEPTH_TEST };
-    settings.depthMask = GL_TRUE;
-    settings.depthFunc = GL_ALWAYS;
-    //settings.depthMask = GL_FALSE;
+    settings.depthMask = GL_FALSE;
     settings.blendFactors.push_back({GL_ONE, GL_ONE});
     settings.blendFactors.push_back({GL_ZERO, GL_ONE_MINUS_SRC_COLOR});
     settings.blendEquation = GL_FUNC_ADD;
+
+    Renderpass& weightedBlendedPass = pipelineWithShadowmap.pipeline.AddPass("Weighted blended transparency pass", settings);
+    RenderpassAttachment& accumulator = weightedBlendedPass.AddAttachment(RenderpassAttachment("accumulator", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f))));
+    RenderpassAttachment& revealage = weightedBlendedPass.AddAttachment(RenderpassAttachment("revealage", AttachmentFormat::FLOAT_1, AttachmentClearOpts(glm::vec4(1.f))));
+
     weightedBlendedPass.AddSubpass("Transparency subpass", &weightedTransparencyShader, meshTag, 
             {
                 SubpassAttachment(&accumulator, SubpassAttachment::AS_COLOR),
                 SubpassAttachment(&revealage, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&deferredPass->GetAttachment("g_depth"), SubpassAttachment::AS_DEPTH),
 
                 SubpassAttachment(pipelineWithShadowmap.shadowmap, SubpassAttachment::AS_TEXTURE, "shadow_map"),
                 SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),

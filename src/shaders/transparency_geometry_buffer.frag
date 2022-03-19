@@ -42,7 +42,7 @@ struct TransparencyData
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
-    ivec4 doShadingIsParticle;
+    vec4 specularitySpecularStrDoShadingIsParticle;
 };
 uniform sampler2D particle_tex;
 
@@ -84,7 +84,7 @@ void main()
     ppll[index].normal = normalize(normal);
 
     vec4 color = tintAndOpacity;
-    if (doShadingIsParticle.y != 0)
+    if (specularitySpecularStrDoShadingIsParticle.w > 0)
     {
         color = color * texture(particle_tex, TexCoords);
     }

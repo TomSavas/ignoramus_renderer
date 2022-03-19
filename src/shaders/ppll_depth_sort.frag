@@ -42,6 +42,7 @@ struct TransparencyData
 layout (std140) uniform MaterialParams
 {
     vec4 tintAndOpacity;
+    vec4 specularitySpecularStrDoShadingIsParticle;
 };
 
 layout (binding = ppllHeads_AUTO_BINDING, r32ui) uniform uimage2D ppllHeads;
