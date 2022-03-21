@@ -202,7 +202,7 @@ Scene TestScene()
     particleAABB = AABB(spawnZone.min + glm::vec3(0.f, 700.f, 0.f), spawnZone.max + glm::vec3(0.f, 700.f, 0.f));
     particleSystemCenter = Transform(particleAABB.min + particleAABB.Extents());
     AddProxyAABBModel(cube, particleSystemCenter, particleAABB, proxyMat, scene);
-    particleSystemCenter.scale = glm::vec3(1400.f);
+    particleSystemCenter.scale = glm::vec3(1500.f);
     AddModel(cube, particleSystemCenter, PROXY, opaqueMat, scene);
 
     return scene;
@@ -776,6 +776,162 @@ RenderPipeline ABufferPPLLWeightedParticlesPipeline(Renderpass& globalAttachment
     return pipelineWithWeightedParticles;
 }
 
+RenderPipeline NewMethod(Renderpass& globalAttachments, ShaderPool& shaders)
+{
+    PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
+
+    // TODO: This is absolutely positively horrible. The pipeline should either be smart enough to figure out where the pass/subpass
+    // can be inserted. Or there should at least be a better mechanism for inserting passes / subpasses.
+    Renderpass* deferredPass = nullptr;
+    Subpass* compositionSubpass = nullptr;
+    int geometrySubpassIndex = -1;
+    for (int i = 0; i < pipelineWithShadowmap.pipeline.passes.size() && deferredPass == nullptr; i++)
+    {
+        Renderpass* pass = pipelineWithShadowmap.pipeline.passes[i];
+        if (pass == nullptr || strcmp(pass->name, DEFERRED_PASS) != 0)
+        {
+            continue;
+        }
+
+        deferredPass = pass;
+        for (int j = 0; j < pass->subpasses.size() && (compositionSubpass == nullptr || geometrySubpassIndex == -1); j++)
+        {
+            Subpass* subpass = pass->subpasses[j];
+            bool isGeometryPass = strcmp(subpass->name, GEOMETRY_SUBPASS) == 0;
+            bool isCompositionPass = strcmp(subpass->name, COMPOSITION_LIGHTING_SUBPASS) == 0;
+            if (subpass == nullptr || !(isGeometryPass || isCompositionPass))
+            {
+                continue;
+            }
+
+            if (isGeometryPass)
+            {
+                geometrySubpassIndex = j;
+            }
+
+            if (isCompositionPass)
+            {
+                compositionSubpass = subpass;
+            }
+        }
+    }
+
+    Shader& weightedTransparencyShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "default.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "weighted_depth_transparency_with_depth.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues()));
+    Shader& weightedTransparencyBlendShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "weighted_transparency_blend.frag", ShaderDescriptor::FRAGMENT_SHADER)
+        }, globalAttachments.DefineValues()));
+
+    PassSettings settings = PassSettings::DefaultSubpassSettings();
+    settings.ignoreApplication = false;
+    settings.ignoreClear = true;
+    settings.enable = { GL_BLEND, GL_DEPTH_TEST };
+    settings.depthMask = GL_FALSE;
+    settings.blendFactors.push_back({GL_ONE, GL_ONE});
+    settings.blendFactors.push_back({GL_ZERO, GL_ONE_MINUS_SRC_COLOR});
+    settings.blendEquation = GL_FUNC_ADD;
+
+    RenderpassAttachment& accumulator = deferredPass->AddAttachment(RenderpassAttachment("accumulator", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(0.f))));
+    RenderpassAttachment& debugDepth = deferredPass->AddAttachment(RenderpassAttachment("d", AttachmentFormat::FLOAT_4, AttachmentClearOpts(glm::vec4(1.f))));
+    RenderpassAttachment& revealage = deferredPass->AddAttachment(RenderpassAttachment("revealage", AttachmentFormat::FLOAT_1, AttachmentClearOpts(glm::vec4(1.f))));
+    //RenderpassAttachment& transparencyDepth = deferredPass->AddAttachment(RenderpassAttachment("transpDepth", AttachmentFormat::UINT_1, AttachmentClearOpts(glm::vec4(1000000000000.f))));
+    RenderpassAttachment& transparencyDepth = deferredPass->AddAttachment(RenderpassAttachment("transpDepth", AttachmentFormat::UINT_1, AttachmentClearOpts(glm::vec4(0.f))));
+
+    deferredPass->InsertSubpass(geometrySubpassIndex + 1, "weighted blended transparency pass", &weightedTransparencyShader, PARTICLE, 
+            {
+                SubpassAttachment(&accumulator, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&revealage, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&debugDepth, SubpassAttachment::AS_COLOR),
+                SubpassAttachment(&deferredPass->GetAttachment("g_depth"), SubpassAttachment::AS_DEPTH),
+                SubpassAttachment(&transparencyDepth, SubpassAttachment::AS_IMAGE, "transparencyDepth"),
+
+                SubpassAttachment(pipelineWithShadowmap.shadowmap, SubpassAttachment::AS_TEXTURE, "shadow_map"),
+                SubpassAttachment(&globalAttachments.GetAttachment(POINT_LIGHTS), SubpassAttachment::AS_SSBO, POINT_LIGHTS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_TILE_DATA), SubpassAttachment::AS_SSBO, LIGHT_TILE_DATA),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_IDS), SubpassAttachment::AS_SSBO, LIGHT_IDS),
+                SubpassAttachment(&globalAttachments.GetAttachment(LIGHT_ID_COUNT), SubpassAttachment::AS_ATOMIC_COUNTER, LIGHT_ID_COUNT)
+            }, settings);
+
+    RenderpassAttachment& transparencyPPLLHeadIndices = deferredPass->AddAttachment(RenderpassAttachment("ppllHeads", AttachmentFormat::UINT_1));
+    long fragmentDataSize = sizeof(glm::vec4) * 3;
+    long maxTransparencyLayers = 8;
+    long linkedListSize = 1920 * 1080 * maxTransparencyLayers * fragmentDataSize;
+    LOG_WARN("", "linked list size: %d MB", linkedListSize / (1024 * 1024));
+    RenderpassAttachment& transparencyPPLL = deferredPass->AddAttachment(RenderpassAttachment::SSBO("TransparentFragments", linkedListSize));
+    RenderpassAttachment& transparentFragmentCount = deferredPass->AddAttachment(RenderpassAttachment::AtomicCounter("transparentFragmentCount"));
+
+    Shader& transparentGeometryShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.geom", ShaderDescriptor::GEOMETRY_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "geometry_buffer.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "transparency_geometry_buffer.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+
+    PassSettings transparentGeometryPassSettings = PassSettings::DefaultSubpassSettings();
+    transparentGeometryPassSettings.ignoreApplication = false;
+    transparentGeometryPassSettings.enable = { GL_DEPTH_TEST };
+    transparentGeometryPassSettings.depthMask = GL_FALSE;
+    deferredPass->InsertSubpass(geometrySubpassIndex + 2, "transparent geometry pass", &transparentGeometryShader, TRANSPARENT,
+        {
+            // NOTE: not sure, a bug or not - this uses the same attachment as the opaque pass since it uses the same FB.
+            //SubpassAttachment(&deferredPass->GetAttachment("g_depth"), SubpassAttachment::AS_DEPTH),
+
+            // TODO: allow picking all existing renderpass' (specific subpass') attachments and re-binding them as textures with the same names?
+            SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
+            SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
+        }, transparentGeometryPassSettings);
+
+    Shader& transparencySortingShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "ppll_depth_sort.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }));
+    deferredPass->InsertSubpass(geometrySubpassIndex + 3, "sorting subpass", &transparencySortingShader, SCREEN_QUAD,
+        {
+            SubpassAttachment(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads")),
+            SubpassAttachment(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments")),
+            SubpassAttachment(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount")),
+        }, PassSettings::DefaultSubpassSettings());
+
+    Shader& deferredLightingWithTransparencyShader = shaders.GetShader(
+        ShaderDescriptor(
+            {
+                ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
+                ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
+                ShaderDescriptor::File(SHADER_PATH "deferred_lighting_with_transparency_weighted_blended.frag", ShaderDescriptor::FRAGMENT_SHADER)
+            }, globalAttachments.DefineValues(deferredPass->DefineValues())));
+    // Replace the existing composition shader with a one respecting transparency
+    compositionSubpass->shader = &deferredLightingWithTransparencyShader;
+    // Add transparency data
+    compositionSubpass->attachments.push_back(SubpassAttachment(&accumulator, SubpassAttachment::AS_TEXTURE, "accumulator"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&revealage, SubpassAttachment::AS_TEXTURE, "revealage"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyDepth, SubpassAttachment::AS_IMAGE, "transparencyDepth"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLLHeadIndices, SubpassAttachment::AS_IMAGE, "ppllHeads"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparencyPPLL, SubpassAttachment::AS_SSBO, "TransparentFragments"));
+    compositionSubpass->attachments.push_back(SubpassAttachment(&transparentFragmentCount, SubpassAttachment::AS_ATOMIC_COUNTER, "transparentFragmentCount"));
+
+    pipelineWithShadowmap.pipeline.AddOutputPass(shaders);
+
+    assert(pipelineWithShadowmap.pipeline.ConfigureAttachments());
+    return pipelineWithShadowmap.pipeline;
+}
+
 std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPool& shaders)
 {
     return 
@@ -790,10 +946,11 @@ std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPo
             { "Depth peeling", DepthPeelingPipeline(globalAttachments, shaders) },
             { "Dual depth peeling", DualDepthPeelingPipeline(globalAttachments, shaders) },
             { "A-Buffer OIT: PPLL (simple)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_transparency.frag").pipeline },
-            { "A-Buffer OIT: PPLL (simple) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
+            { "Naive A-Buffer OIT: PPLL (simple) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
                     SHADER_PATH "deferred_lighting_with_transparency.frag") },
+            { "Corrected A-Buffer OIT: PPLL (simple) + weighted blended particles", NewMethod(globalAttachments, shaders) },
             { "A-Buffer OIT: PPLL (volumetric)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_volumetric_transparency.frag").pipeline },
-            { "A-Buffer OIT: PPLL (volumetric) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
+            { "Naive A-Buffer OIT: PPLL (volumetric) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
                     SHADER_PATH "deferred_lighting_with_volumetric_transparency.frag") },
         };
 }

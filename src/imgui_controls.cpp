@@ -167,7 +167,7 @@ void ShowSceneSettings(Scene& scene, bool* open)
     if (ImGui::Begin("Scene settings", open))
     {
         ImGui::Checkbox("Wireframe", (bool*)&scene.sceneParams.wireframe);
-        ImGui::Checkbox("Use depth light culling optimisation", (bool*)&scene.sceneParams.useDepthLightCullingOptimisation);
+        ImGui::Checkbox("Use depth from PPLL for tile culling", (bool*)&scene.sceneParams.useDepthLightCullingOptimisation);
         ImGui::Checkbox("Particles", (bool*)&scene.renderParticles);
 
         ImGui::SliderFloat("Gamma", &scene.sceneParams.gamma, 1, 10);

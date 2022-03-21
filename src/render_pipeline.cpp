@@ -609,7 +609,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         // TODO: add ability to make this read/write only
 
                         // TEMP clear
-                        if (strcmp(subpass.name, "transparent geometry pass") == 0)
+                        if (strcmp(subpass.name, "transparent geometry pass") == 0 || strcmp(subpass.name, "weighted blended transparency pass") == 0)
                         {
                             //LOG_DEBUG("clear", "clearing image");
                             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, clearBuffer);
