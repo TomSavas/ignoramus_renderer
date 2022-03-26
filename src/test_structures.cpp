@@ -110,7 +110,6 @@ Scene TestScene()
 
     Transform opaqueDragonTransform(glm::vec3(0.f, 200.f, -700.f), glm::quat(glm::vec3(0.f, -glm::pi<float>(), 0.f)), glm::vec3(500.f));
     AddModel(dragon, opaqueDragonTransform, OPAQUE, opaqueMat, scene);
-    AddProxyAABBModel(cube, opaqueDragonTransform, dragon.aabbModelSpace, proxyMat, scene);
 
     Transform transparentBlueDragonTransform(glm::vec3(0.f, 200.f, 100.f), glm::quat(glm::vec3(0.f, 0.f, 0.f)), glm::vec3(500.f));
     AddModel(dragon, transparentBlueDragonTransform, TRANSPARENT, blueTransparentMat, scene);
@@ -776,7 +775,7 @@ RenderPipeline ABufferPPLLWeightedParticlesPipeline(Renderpass& globalAttachment
     return pipelineWithWeightedParticles;
 }
 
-RenderPipeline NewMethod(Renderpass& globalAttachments, ShaderPool& shaders)
+RenderPipeline PPLLAndWeightedCombined(Renderpass& globalAttachments, ShaderPool& shaders, const char* ppllShaderFilepath)
 {
     PipelineWithShadowmap pipelineWithShadowmap = UnconfiguredDeferredPipeline(globalAttachments, shaders);
 
@@ -914,7 +913,7 @@ RenderPipeline NewMethod(Renderpass& globalAttachments, ShaderPool& shaders)
                 ShaderDescriptor::File(SHADER_PATH "fallthrough.vert", ShaderDescriptor::VERTEX_SHADER),
                 ShaderDescriptor::File(FRAG_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
                 ShaderDescriptor::File(LIGHTING_COMMON_SHADER, ShaderDescriptor::FRAGMENT_SHADER),
-                ShaderDescriptor::File(SHADER_PATH "deferred_lighting_with_transparency_weighted_blended.frag", ShaderDescriptor::FRAGMENT_SHADER)
+                ShaderDescriptor::File(ppllShaderFilepath, ShaderDescriptor::FRAGMENT_SHADER)
             }, globalAttachments.DefineValues(deferredPass->DefineValues())));
     // Replace the existing composition shader with a one respecting transparency
     compositionSubpass->shader = &deferredLightingWithTransparencyShader;
@@ -948,9 +947,12 @@ std::vector<NamedPipeline> TestPipelines(Renderpass& globalAttachments, ShaderPo
             { "A-Buffer OIT: PPLL (simple)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_transparency.frag").pipeline },
             { "Naive A-Buffer OIT: PPLL (simple) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
                     SHADER_PATH "deferred_lighting_with_transparency.frag") },
-            { "Corrected A-Buffer OIT: PPLL (simple) + weighted blended particles", NewMethod(globalAttachments, shaders) },
+            { "Corrected A-Buffer OIT: PPLL (simple) + weighted blended particles", PPLLAndWeightedCombined(globalAttachments, shaders,
+                    SHADER_PATH "deferred_lighting_with_transparency_weighted_blended.frag") },
             { "A-Buffer OIT: PPLL (volumetric)", ABufferPPLLPipeline(globalAttachments, shaders, SHADER_PATH "deferred_lighting_with_volumetric_transparency.frag").pipeline },
             { "Naive A-Buffer OIT: PPLL (volumetric) + weighted blended particles", ABufferPPLLWeightedParticlesPipeline(globalAttachments, shaders,
                     SHADER_PATH "deferred_lighting_with_volumetric_transparency.frag") },
+            { "Corrected A-Buffer OIT: PPLL (volumetric) + weighted blended particles", PPLLAndWeightedCombined(globalAttachments, shaders,
+                    SHADER_PATH "deferred_lighting_with_volumetric_transparency_weighted_blended.frag") },
         };
 }
