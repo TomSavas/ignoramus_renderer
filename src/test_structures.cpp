@@ -597,6 +597,8 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
         subpassSettings.ignoreApplication = false;
         subpassSettings.enable = { GL_BLEND };
         subpassSettings.blendEquation = GL_MAX;
+        subpassSettings.srcBlendFactor = GL_SRC_ALPHA;
+        subpassSettings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
 
         bool evenPeel = i % 2 == 0;
 
@@ -623,8 +625,11 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
         subpassSettings.ignoreApplication = false;
         subpassSettings.enable = { GL_BLEND };
         subpassSettings.blendEquation = GL_FUNC_ADD;
-        subpassSettings.srcBlendFactor = GL_SRC_ALPHA;
-        subpassSettings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+        subpassSettings.blendFuncSeparate.use = true;
+        subpassSettings.blendFuncSeparate.srcRGB = GL_SRC_ALPHA;
+        subpassSettings.blendFuncSeparate.dstRGB = GL_ONE_MINUS_SRC_ALPHA;
+        subpassSettings.blendFuncSeparate.srcAlpha = GL_ONE;
+        subpassSettings.blendFuncSeparate.dstAlpha = GL_ONE_MINUS_SRC_ALPHA;
         Subpass& backBlendSubpass = dualDepthPeelingPass.AddSubpass(blendingSubpassName, &dualDepthPeelingBackBlendingShader, SCREEN_QUAD,
             { 
                 SubpassAttachment(&finalBackBlender, SubpassAttachment::AS_COLOR),
@@ -639,7 +644,7 @@ RenderPipeline DualDepthPeelingPipeline(Renderpass& globalAttachments, ShaderPoo
     settings.ignoreClear = true;
     settings.enable = { GL_BLEND };
     settings.blendEquation = GL_FUNC_ADD;
-    settings.srcBlendFactor = GL_SRC_ALPHA;
+    settings.srcBlendFactor = GL_ONE;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
 
     Renderpass& dualDepthPeelingCompositionPass = pipelineWithShadowmap.pipeline.AddPass("Dual depth peeling composition pass", settings);

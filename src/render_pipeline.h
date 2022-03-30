@@ -86,6 +86,15 @@ struct PassSettings
     GLenum dstBlendFactor;
     // Per color attachment blend factors
     std::vector<BlendFactors> blendFactors;
+
+    struct BlendFuncSeparate 
+    {
+        bool use;
+        GLenum srcRGB;
+        GLenum dstRGB;
+        GLenum srcAlpha;
+        GLenum dstAlpha;
+    } blendFuncSeparate;
      
     glm::ivec3 computeWorkGroups;
 

@@ -123,6 +123,10 @@ void PassSettings::Apply()
     {
         glBlendFunci(i, blendFactors[i].srcFactor, blendFactors[i].dstFactor);
     }
+    if (blendFuncSeparate.use)
+    {
+        glBlendFuncSeparate(blendFuncSeparate.srcRGB, blendFuncSeparate.dstRGB, blendFuncSeparate.srcAlpha, blendFuncSeparate.dstAlpha);
+    }
     // missing color masking
 }
 
@@ -152,6 +156,7 @@ void PassSettings::Apply(PassSettings& previousSettings)
     settings.blendEquation = GL_FUNC_ADD;
     settings.srcBlendFactor = GL_SRC_ALPHA;
     settings.dstBlendFactor = GL_ONE_MINUS_SRC_ALPHA;
+    settings.blendFuncSeparate = { false, 0, 0, 0, 0 };
     settings.computeWorkGroups = glm::ivec3(1, 1, 1);
 
     return settings;
