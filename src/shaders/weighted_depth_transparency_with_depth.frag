@@ -53,6 +53,11 @@ void main()
     // weight function
     float weight = clamp(pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
 
+    //weight = max(min(1.0, max(max(color.r, color.g), color.b) * color.a), color.a) *
+    //        clamp(0.03 / (1e-5 + pow(gl_FragCoord.z / 200, 4.0)), 1e-2, 3e3);
+    //weight = alpha * pow(1.f - gl_FragCoord.z, 1.f);
+    weight = pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * pow(1.f - gl_FragCoord.z, 1.9f) * 1e9;
+
     if (specularitySpecularStrDoShadingIsParticle.z > 0)
     {
         float specularity = specularitySpecularStrDoShadingIsParticle.x;

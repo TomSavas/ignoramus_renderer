@@ -37,16 +37,26 @@ void main()
     }
     vec4 color = tintAndOpacity * particleTextureColor;
 
-    float alpha = color.a;
-    // weight function
-    float weight = clamp(pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
-
     if (specularitySpecularStrDoShadingIsParticle.z > 0)
     {
         float specularity = specularitySpecularStrDoShadingIsParticle.x;
         float specularStrength = specularitySpecularStrDoShadingIsParticle.y;
         color = vec4(shade(Pos, color.rgb, Normal, specularity, specularStrength, fragmentPos), color.a);
     }
+
+    float alpha = color.a;
+    // weight function
+    float weight;
+    //weight = clamp(pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 5.0), 1e-2, 3e3);
+    //weight = max(min(1.0, max(max(color.r, color.g), color.b) * color.a), color.a) *
+    //        clamp(0.03 / (1e-5 + pow(gl_FragCoord.z / 3000, 4.0)), 1e-2, 3e3);
+    //weight = pow(10.f + gl_FragCoord.z, 0.0);
+    //weight = alpha * pow(1.f - gl_FragCoord.z, 1.3);
+    //weight = pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * pow(1.f - gl_FragCoord.z, 1.9f) * 1e9;
+    weight = pow(min(1.0, alpha * 10.0) + 0.01, 3.0) * pow(1.f - gl_FragCoord.z, 1.9f) * 1e9;
+
+    //float d = (100000.f * 1.f / (gl_FragCoord.z - 100000.f)) / (1.f - 100000.f);
+    //weight = alpha * max(1e-2, 3e30 * pow(1.f - d, 7.f));
 
     // store pixel color accumulation
     accumulator = vec4(color.rgb * alpha, alpha) * weight;
