@@ -1,6 +1,7 @@
 #version 460 core
 layout (location = 0) out vec4 accumulator;
 layout (location = 1) out float revealage;
+layout (location = 2) out vec4 d;
 
 in vec3 Pos;
 in vec3 Normal;
@@ -65,8 +66,8 @@ void main()
         color = vec4(shade(Pos, color.rgb, Normal, specularity, specularStrength, fragmentPos), color.a);
     }
 
-    float depth = gl_FragCoord.z;
-    imageAtomicMin(transparencyDepth, ivec2(gl_FragCoord.xy), uint(depth * nearFarPlanes.y));
+    float depth = gl_FragCoord.z * nearFarPlanes.y;
+    imageStore(transparencyDepth, ivec2(gl_FragCoord.xy), ivec4(depth));
 
     // store pixel color accumulation
     accumulator = vec4(color.rgb * alpha, alpha) * weight;

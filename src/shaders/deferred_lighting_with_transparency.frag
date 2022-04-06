@@ -49,12 +49,6 @@ vec4 under(vec4 backColor, vec4 frontColor)
     return blendedColor;
 }
 
-//vec4 over(vec4 frontColor, vec4 backColor)
-//{
-//    transparencyColor.rgb = transpColor * layers[i].color.a + transparencyColor.rgb * (1.f - layers[i].color.a);
-//    transparencyColor.a = transparencyColor.a + layers[i].color.a * alpha;
-//}
-
 vec3 shade(vec3 pos, vec3 color, vec3 normal, float specularity, float specularStrength, vec2 uv);
 vec3 shadeFromTex(vec2 uv);
 
@@ -70,22 +64,20 @@ vec4 traceTransparency()
     vec3 rayEndPos;
 
     vec4 uv = vec4(gl_FragCoord.xy / vec2(1920.f, 1080.f), 0.f, 0.f);
+    uint head = imageLoad(ppllHeads, ivec2(uv.xy * vec2(1920.f, 1080.f))).r;
+    if (head == NO_TRANSPARENCY_INDEX)
+    {
+        return NO_TRANSPARENCY_COLOR;
+    }
+    // Look for transparency layer we hit
+    TransparencyData frontLayer;
+    TransparencyData backLayer;
+
+    backLayer.nextFragmentIndex = head; // Just a fictional layer to start off the iteration
 
     float thickness;
     while (layerCount < MAX_TRANSPARENCY_LAYERS)
     {
-        uint head = imageLoad(ppllHeads, ivec2(uv.xy * vec2(1920.f, 1080.f))).r;
-        if (head == NO_TRANSPARENCY_INDEX)
-        {
-            break;
-            //return NO_TRANSPARENCY_COLOR;
-        }
-
-        // Look for transparency layer we hit
-        TransparencyData frontLayer;
-        TransparencyData backLayer;
-
-        backLayer.nextFragmentIndex = head; // Just a fictional layer to start off the iteration
         do 
         {
             frontLayer = ppll[backLayer.nextFragmentIndex]; 
@@ -105,19 +97,27 @@ vec4 traceTransparency()
         }
         backLayer = ppll[frontLayer.nextFragmentIndex]; 
 
-
         lastDepth = backLayer.depth;
-        rayEndPos = backLayer.pos;
 
-        vec4 transparencyVolumeColor = under(backLayer.color, frontLayer.color);
-        // Effectively only the front surface reflects light
-        transparencyVolumeColor.rgb = shade(frontLayer.pos, transparencyVolumeColor.rgb, frontLayer.normal, 256.f, 5.f, uv.xy);
+        vec4 transparencyVolumeColor;
+        if (frontLayer.normal == vec3(1.f, 2.f, 3.f) && frontLayer.pos == vec3(4.f, 5.f, 6.f))
+        {
+            transparencyVolumeColor = frontLayer.color;
+            transparencyVolumeColor.rbg *= transparencyVolumeColor.a;
+            color = under(transparencyVolumeColor, color);
 
-        color = under(transparencyVolumeColor, color);
-
-        uv = viewProjection * vec4(rayEndPos, 1.f);
-        uv /= uv.w; 
-        uv = uv * 0.5 + 0.5;
+            if (backLayer.nextFragmentIndex == NO_TRANSPARENCY_INDEX)
+            {
+                break;
+            }
+        }
+        else
+        {
+            rayEndPos = backLayer.pos;
+            transparencyVolumeColor = under(backLayer.color, frontLayer.color);
+            transparencyVolumeColor.rgb = shade(frontLayer.pos, transparencyVolumeColor.rgb, frontLayer.normal, 256.f, 5.f, uv.xy);
+            color = under(transparencyVolumeColor, color);
+        }
     }
 
     if (layerCount == 0)

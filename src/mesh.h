@@ -18,8 +18,10 @@ enum MeshTag
     SCREEN_QUAD     = 0x04,
     COMPUTE         = 0x08,
     PARTICLE        = 0x10,
+    PARTICLE0       = 0x20,
+    PARTICLE1       = 0x40,
     // Must be last
-    PROXY           = 0x20,
+    PROXY           = 0x80,
 
     ALL             = -1
 };

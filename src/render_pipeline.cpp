@@ -653,7 +653,7 @@ void RenderPipeline::Render(Scene& scene, ShaderPool& shaders)
                         }
 
                         // TEMP clear
-                        //if (strcmp(subpass.name, "transparent geometry pass") == 0)
+                        if (strcmp(subpass.name, "transparent geometry pass") == 0 || strcmp(subpass.name, "Light tile culling subpass") == 0)
                         {
                             //LOG_DEBUG("clear", "clearing counter");
                             static GLuint zero = 0;
